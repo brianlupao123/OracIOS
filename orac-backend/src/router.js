@@ -117,14 +117,7 @@ import {
   listStoreIssueVouchers,
   getProcurementSummary
 } from "./controllers/procurementController.js";
-import {
-  createVehicle,
-  listVehicles,
-  dispatchVehicle,
-  returnVehicle,
-  logFuel,
-  getFleetSummary
-} from "./controllers/fleetController.js";
+import fleetRoutes from "./modules/fleet/routes.js";
 
 import {
   recordPreDispatchPpe,
@@ -206,10 +199,7 @@ import {
   postScanAlerts, getAlerts, getSummary as getAlertSummary, postAcknowledge, postDismiss
 } from "./controllers/reorderAlertController.js";
 
-import {
-  postOdometerReading, getOdometer, getStats as getFleetStats,
-  getScanCompliance, getExpiryAlerts, postMaintenanceRequest, postMaintenanceTransition
-} from "./controllers/fleetComplianceController.js";
+
 
 import {
   postCreateJsa, postSubmitJsa, postApproveJsa, postRejectJsa, getJsaCheck,
@@ -537,13 +527,8 @@ router.post("/procurement/store-issue-vouchers", issueStoreVoucher);
 router.post("/procurement/three-way-match", performThreeWayMatch);
 router.get("/procurement/summary", getProcurementSummary);
 
-// Subsystem 4: Fleet & Logistics routes
-router.get("/fleet/vehicles", listVehicles);
-router.post("/fleet/vehicles", createVehicle);
-router.post("/fleet/dispatches", dispatchVehicle);
-router.post("/fleet/dispatches/:id/return", returnVehicle);
-router.post("/fleet/fuel-logs", logFuel);
-router.get("/fleet/summary", getFleetSummary);
+// Subsystem 4: Fleet & Logistics routes (module)
+router.use(fleetRoutes);
 
 // Subsystem 5: HSE Compliance routes
 router.post("/hse/ppe-checklists", recordPreDispatchPpe);
@@ -654,14 +639,7 @@ router.get("/leave-calendar", getCalendar);
   router.post("/inventory/reorder-alerts/:id/acknowledge", postAcknowledge);
   router.post("/inventory/reorder-alerts/:id/dismiss", postDismiss);
 
-  // ── Fleet Compliance ──────────────────────────────────────────────
-  router.post("/fleet/odometer", postOdometerReading);
-  router.get("/fleet/odometer/:vehicleId", getOdometer);
-  router.get("/fleet/odometer/:vehicleId/stats", getFleetStats);
-  router.get("/fleet/compliance", getScanCompliance);
-  router.get("/fleet/compliance/alerts", getExpiryAlerts);
-  router.post("/fleet/maintenance", postMaintenanceRequest);
-  router.post("/fleet/maintenance/:id/transition", postMaintenanceTransition);
+
 
   // ── HSE Quality (JSA + Inspections) ───────────────────────────────
   router.post("/hse/jsa", postCreateJsa);

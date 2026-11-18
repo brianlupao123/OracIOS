@@ -6,10 +6,18 @@ const src = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").r
 const lines = src.split("\n");
 const authAt = lines.findIndex((l) => /^router\.use\(authMiddleware\);/.test(l));
 
-test("router.use(authMiddleware) exists exactly once and is the first router.use", () => {
+test("router.use(authMiddleware) exists and all module router.use() calls come after it", () => {
   const uses = lines.map((l, i) => ({ l, i })).filter(({ l }) => /^router\.use\(/.test(l));
-  assert.equal(uses.length, 2, "only publicRoutes and authMiddleware may be router.use()");
-  assert.equal(uses[uses.length - 1].i, authAt, "authMiddleware must be the last router.use()");
+  assert.ok(uses.length >= 2, "at least publicRoutes and authMiddleware must be router.use()");
+  // publicRoutes must be before authMiddleware; authMiddleware before any module routes
+  const preAuth = uses.filter(({ i }) => i < authAt);
+  const postAuth = uses.filter(({ i }) => i > authAt);
+  assert.equal(preAuth.length, 1, "only publicRoutes may be router.use() before authMiddleware");
+  assert.ok(preAuth[0].l.includes("publicRoutes"), "pre-auth router.use must be publicRoutes");
+  // All post-auth uses must be named module routes (not raw middleware)
+  for (const { l } of postAuth) {
+    assert.ok(/^router\.use\(\w+Routes\);/.test(l), `post-auth router.use must be a module route: ${l}`);
+  }
 });
 
 test("the unauthenticated route allowlist includes only the reviewed routes and TOTP verification", () => {
