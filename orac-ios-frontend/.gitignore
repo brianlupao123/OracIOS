@@ -1,0 +1,31 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+!.env.uat.local.example
+!.env.uat
+*.log
+
+# Local recovery artifacts; never deploy or commit these.
+backup-stabilize-*/
+phase-stabilize-frontend-sync-*.ps1
+
+# Generated UAT evidence and document previews can contain role-scoped data.
+deliverables/
+orac-ppt-render/
+.orac-document-build/
+evidence/uat/
+evidence/phase5-browser-uat/
+evidence/ui-visual-audit/
+
+dist-uat/
+
+# SSR build artefacts (Vite / node adapter)
+.orac-ssr-*/
+
+# Local evidence captures — may contain role-scoped screenshots.
+evidence/
+
+# One-off capture helpers
+scripts/capture-entry-now.mjs

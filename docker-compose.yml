@@ -1,0 +1,64 @@
+# ═══════════════════════════════════════════════════════════════
+# ORAC-IOS Docker Compose — Local Development
+# ═══════════════════════════════════════════════════════════════
+# Usage: docker-compose up
+# Starts: PostgreSQL (port 5432) + Backend API (port 5000) + Frontend (port 5173)
+# ═══════════════════════════════════════════════════════════════
+
+version: "3.9"
+
+services:
+  # ── PostgreSQL Database ──
+  postgres:
+    image: postgres:16-alpine
+    container_name: orac-postgres
+    environment:
+      POSTGRES_DB: orac_dev
+      POSTGRES_USER: orac
+      POSTGRES_PASSWORD: orac_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orac -d orac_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend API Server ──
+  backend:
+    build:
+      context: ./orac-backend
+      dockerfile: Dockerfile
+    container_name: orac-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://orac:orac_dev_password@postgres:5432/orac_dev
+      JWT_SECRET: dev-jwt-secret-change-in-production
+      STORE_DRIVER: postgres
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./orac-backend/src:/app/src
+      - ./orac-backend/uploads:/app/uploads
+
+  # ── Frontend Dev Server ──
+  frontend:
+    build:
+      context: ./orac-ios-frontend
+      dockerfile: Dockerfile
+    container_name: orac-frontend
+    depends_on:
+      - backend
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000/api
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:

@@ -1,0 +1,703 @@
+import express from "express";
+import {
+  getTimesheetPolicy, updateTimesheetPolicy, listTimesheetAuthorities, createTimesheetAuthority, revokeTimesheetAuthority,
+  setClientCutover, listTimesheetsRateFree, capturePaperTimesheet, logPaperCustody, batchConfirmTimesheets,
+  runTimesheetReminders, getPaperSampling, getInvoiceVariance, requestVarianceOverride, approveVarianceOverride, resolvePostInvoiceRevision,
+  getRegisterPoVariance, getDispatchPoVariance, attachPoScopeEvidence,
+  getV5BillingReadiness
+} from "./controllers/timesheetWorkflowController.js";
+import {
+  createV5ClientSupervisorContact, listV5ClientSupervisorContacts, withdrawV5ClientSupervisorContact,
+  getV5SignatureState, recordV5PaperSignature, confirmV5Timesheet
+} from "./controllers/v5SignatureController.js";
+import { V5ClientSupervisorContactSchema, V5PaperSignatureSchema, V5SupervisorConfirmationSchema } from "./v5SignatureSchemas.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { validate } from "./middleware/validate.js";
+import { idempotencyKeyMiddleware } from "./idempotency.js";
+import { downloadImportTemplate, previewMasterDataImport, commitMasterDataImport, listImportJobs, getImportJob } from "./controllers/importController.js";
+import {
+  LoginSchema, CreateQuoteSchema, UpdateQuoteSchema, CreateQuoteRevisionSchema, RecordAmendedPoEvidenceSchema, ApproveV5AmendmentSchema, TransitionQuoteSchema, VerifyPoSchema,
+  AddTimesheetSchema, KioskTimesheetBatchSchema, AddMaterialSchema, V5MaterialAllocationSchema, V5AmendmentDispatchLinkSchema, V5AmendmentEvidenceAllocationSchema, CreateV5InvoiceDraftSchema, IssueV5InvoiceDraftSchema, V5LineCompletionSchema, V5AmendmentSupersessionSchema, V5AllocationRemapSchema, CreateWorksheetSchema, AssignRosterSchema,
+  ReviewWorksheetSchema, ReviewKioskTimesheetSchema, AssignDispatchSupervisorSchema, ApproveAmendmentSchema, CreateLeadSchema, UpdateWorksheetSchema,
+  AdminCreateUserSchema, AdminUpdateUserSchema, AdminCreateClientSchema, AdminUpdateClientSchema,
+  AdminCreateMineSiteSchema, AdminUpdateMineSiteSchema, AdminCreatePlantSchema, AdminUpdatePlantSchema,
+  AdminCreatePlantSectionSchema, AdminUpdatePlantSectionSchema, AdminCreateEquipmentTagSchema, AdminUpdateEquipmentTagSchema,
+  AdminCreateCatalogItemSchema, AdminUpdateCatalogItemSchema, AdminCompanyProfileSchema,
+  ClientSubmitPoSchema, RejectPoSchema,
+  CreateSupplierSchema, UpdateSupplierSchema,
+  CreateStockItemSchema, UpdateStockItemSchema,
+  StockMovementSchema, DirectSaleStockIssueSchema,
+  RecordInvoicePaymentSchema, VoidInvoicePaymentSchema, CreateInvoiceCreditNoteSchema, IssueInvoiceCreditNoteSchema, CreateLegacyInvoiceDraftSchema, IssueLegacyInvoiceDraftSchema,
+  CreateServiceRequestSchema, TriageServiceRequestSchema,
+  CreateInternalWorkRequestSchema, TransitionInternalWorkRequestSchema,
+  ClientAcknowledgeWorksheetSchema, ClientReturnWorksheetSchema, ReviseWorksheetSchema,
+  CreateDailyTimesheetSchema, UpdateDailyTimesheetSchema, ReviewDailyTimesheetSchema,
+  CreateContractorLogSchema, UpdateContractorLogSchema, ReviewContractorLogSchema
+} from "./schemas.js";
+
+import { loginDemoUser, getMe, requestPasswordReset, resetPassword, loginWithGoogle } from "./controllers/authController.js";
+import { verifyTotpLogin, beginTotpEnrollment, confirmTotpEnrollment, issueTotpEnrollmentTicket, resetTotpFactor, requestTotpFactorReset, approveTotpFactorReset } from "./controllers/totpController.js";
+import { createAccessRequest, approveAccessRequest, rejectAccessRequest, issueAccessRequestSetupLink } from "./controllers/accessRequestsController.js";
+import { createQuote, createQuoteRevision, recordAmendedPoEvidence, approveV5Amendment, transition, capturePo, submitClientPo, rejectPo, updateQuote, cancelQuote } from "./controllers/quoteController.js";
+import {
+  addTimesheet, addMaterialUsage, createWorksheet,
+  submitWorksheet, reviewWorksheet, approveAmendment, updateWorksheet,
+  getDispatchMaterialStatus, assignRosterTechnician, getDispatchRoster, assignDispatchSupervisor, getDispatchJobCard, getDispatchInvoiceReadiness
+} from "./controllers/dispatchController.js";
+import { allocateV5MaterialUsage } from "./controllers/v5MaterialAllocationController.js";
+import { linkV5AmendmentToDispatch } from "./controllers/v5AmendmentLinkController.js";
+import { allocateV5AmendmentEvidence } from "./controllers/v5AmendmentEvidenceAllocationController.js";
+import { getV5InvoicePreview } from "./controllers/v5InvoicePreviewController.js";
+import { createV5InvoiceDraft, getV5InvoiceDraft, getV5InvoiceDraftWorkspace, issueV5InvoiceDraft, listDispatchV5InvoiceDrafts, recordV5LineCompletion, supersedeV5Amendment, remapV5Allocation, getV5Invoice, listDispatchV5Invoices, getV5InvoiceBillingState } from "./controllers/v5InvoiceWriterController.js";
+import { getKioskRoster, submitKioskTimesheets } from "./controllers/kioskController.js";
+import { listDailyTimesheetReviewQueue, reopenDailyTimesheet,
+  createDailyTimesheet, updateDailyTimesheet, submitDailyTimesheet,
+  reviewDailyTimesheet, getDailyTimesheetDocument
+} from "./controllers/dailyTimesheetController.js";
+import { listTechnicianProfiles } from "./controllers/technicianProfilesController.js";
+import { accessTechnicianSettlementDetails } from "./controllers/technicianSettlementController.js";
+import {
+  createContractorLog, updateContractorLog, submitContractorLog,
+  reviewContractorLog, getContractorLogDocument
+} from "./controllers/contractorLogController.js";
+import {
+  listWorksheetRegisters, getWorksheetRegister, getWorksheetRegisterDocument, previewWorksheetRegister, createWorksheetRegister, updateWorksheetRegister,
+  buildWorksheetRegister, acknowledgeRegisterExceptions, submitWorksheetRegister, reviewWorksheetRegister, cancelWorksheetRegister,
+  reconcileWorksheetRegister, listLegacyTimesheets
+} from "./controllers/worksheetRegisterController.js";
+import {
+  PreviewWorksheetRegisterSchema, CreateWorksheetRegisterSchema, UpdateWorksheetRegisterSchema, AcknowledgeRegisterExceptionsSchema,
+  ReviewWorksheetRegisterSchema, CancelWorksheetRegisterSchema, ReconcileWorksheetRegisterSchema
+} from "./worksheetRegisterSchemas.js";
+import { CreateTimesheetSchemaV2, UpdateTimesheetSchemaV2 } from "./timesheetSchemasV2.js";
+import { listDispatchTimesheets, listKioskReviewQueue, reviewKioskTimesheet } from "./controllers/timesheetReviewController.js";
+import {
+  listOwnClientTimesheets, acknowledgeWorksheet, returnWorksheetByClient, reviseWorksheet,
+  getTimesheetPeriodPack, getTimesheetPeriodPackPdf, getTimesheetPeriodSummary
+} from "./controllers/timesheetAcknowledgementController.js";
+import { getSummary, exportPastel, createLead, getCollection, reactivateEntity, deactivateEntity, voidInvoice } from "./controllers/coreController.js";
+import { getInvoiceSettlement, recordInvoicePayment, voidInvoicePayment, createInvoiceCreditNote, issueInvoiceCreditNote } from "./controllers/invoiceSettlementController.js";
+import { createLegacyInvoiceDraft, issueLegacyInvoiceDraft, listLegacyInvoiceDrafts } from "./controllers/legacyInvoiceDraftController.js";
+import { getQuoteTrail } from "./controllers/trailController.js";
+import { getQuoteDocument, getDispatchDocument, getWorksheetDocument, getInvoiceDocument, getPoDocument, getQuotePdf, getJobCardPdf, getWorksheetPdf, getInvoicePdf, getPoDocumentPdf } from "./controllers/documentController.js";
+import { getPipelineReport, getPoComplianceReport, getDispatchReport, getWorksheetReport, getInvoiceReadyReport, getVarianceReport, getTechnicianPayrollReport, exportTechnicianPayrollPastel } from "./controllers/reportsController.js";
+import { createUser, updateUser, createClient, updateClient, createMineSite, updateMineSite, createPlant, updatePlant, createPlantSection, updatePlantSection, createEquipmentTag, updateEquipmentTag, createCatalogItem, updateCatalogItem, getCompanyProfile, updateCompanyProfile, assignCommercialOwnership } from "./controllers/adminController.js";
+import { getSalesPortfolioDispatches, getSalesDispatchProgress, getSalesApprovedWorkSummary, getSalesMaterialsSummary, getSalesPortfolioInvoices, getSalesPortfolioPurchaseOrders } from "./controllers/salesPortfolioController.js";
+import { getSuppliers, createSupplier, updateSupplier, getStockItems, createStockItem, updateStockItem, recordStockMovement, issueDirectSaleStock, getStockMovements, getStockItemMovements, getLowStockReport, getInventoryReconciliation } from "./controllers/inventoryController.js";
+import { getNotifications, markAllRead, markRead } from "./controllers/notificationController.js";
+import { getAiHealth, getBriefing, getAttentionItems, getMetricExplanation, getChatResponse, getWorkflowGuide, getRecordAnalysis, flagAiResponse } from "./controllers/aiController.js";
+import { getPastelReviewQuotes, getPastelReviewInvoiceReady, previewLeadImport, commitLeadImport, getOperationalAnalytics } from "./controllers/operationalDataController.js";
+import { getJobTracker } from "./controllers/jobTrackerController.js";
+import { getDailyTaskReport, getInvoiceReadySummary, getClientCompletionRecord } from "./controllers/operationalDocumentsController.js";
+import {
+  createServiceRequest, listOwnServiceRequests, listServiceRequestTriageQueue,
+  triageServiceRequest, convertServiceRequestToLead
+} from "./controllers/serviceRequestsController.js";
+import {
+  getInternalWorkRequestOptions, createInternalWorkRequest, listInternalWorkRequestOutbox,
+  listInternalWorkRequestInbox, getInternalWorkRequest, acknowledgeInternalWorkRequest,
+  transitionInternalWorkRequest
+} from "./controllers/internalWorkRequestsController.js";
+import { approveTechnicianRegistration } from "./controllers/technicianRegistrationController.js";
+import {
+  listContracts, createContract, updateContract,
+  listMaintenanceSchedules, createMaintenanceSchedule, updateMaintenanceSchedule
+} from "./controllers/contractsController.js";
+
+import {
+  createProcurementRequest,
+  approveProcurementRequest,
+  createSupplierPo,
+  receiveGrn,
+  issueStoreVoucher,
+  performThreeWayMatch,
+  listProcurementRequests,
+  listSupplierPos,
+  listGrns,
+  listStoreIssueVouchers,
+  getProcurementSummary
+} from "./controllers/procurementController.js";
+import {
+  createVehicle,
+  listVehicles,
+  dispatchVehicle,
+  returnVehicle,
+  logFuel,
+  getFleetSummary
+} from "./controllers/fleetController.js";
+
+import {
+  recordPreDispatchPpe,
+  listPpeChecklists,
+  createToolboxTalk,
+  listToolboxTalks,
+  reportIncident,
+  listIncidents,
+  getHseSummary
+} from "./controllers/hseController.js";
+
+import {
+  createArtisanQualification,
+  listArtisanQualifications,
+  recordMineInduction,
+  listMineInductions,
+  verifyArtisanDispatchGate,
+  getArtisanVaultSummary
+} from "./controllers/artisanController.js";
+
+import {
+  bookSurvey,
+  listSurveys,
+  getSurveyMeetingAccess,
+  completeSurveyWithNotes,
+  extractSurveyAiScopeAndDraftQuote,
+  getSurveySummary
+} from "./controllers/surveyController.js";
+
+import {
+  submitFeedback,
+  listFeedbacks,
+  resolveFeedbackTriage,
+  getFeedbackSummary,
+  generateQrToken,
+  getQbrReportDeck
+} from "./controllers/feedbackController.js";
+
+import {
+  ingestTelemetry,
+  getEquipmentTelemetry,
+  listAlerts,
+  resolveAlert,
+  getTelemetrySummary
+} from "./controllers/telemetryController.js";
+
+import {
+  syncBatchMutations,
+  getSyncJournal,
+  resolveConflict
+} from "./controllers/syncController.js";
+
+import {
+  getRoleDashboardSummary
+} from "./controllers/dashboardController.js";
+
+import {
+  createProposal, listProposals, getProposal, approveProposal, rejectProposal
+} from "./controllers/makerCheckerController.js";
+
+import {
+  listCommunicationTemplates, getCommunicationTemplate, previewCommunication,
+  getTimeline, recordEvidence, getDigest
+} from "./controllers/communicationsController.js";
+import {
+  createLeave, listLeaves, getLeave, submitLeave, approveLeave,
+  rejectLeave, cancelLeave, getBalance, getCalendar, getLeaveTypes
+} from "./controllers/leaveController.js";
+
+
+
+
+
+import {
+  getGanttTimeline, getUtilisation, getConflicts, postReschedule
+} from "./controllers/ganttSchedulingController.js";
+
+import {
+  postScanAlerts, getAlerts, getSummary as getAlertSummary, postAcknowledge, postDismiss
+} from "./controllers/reorderAlertController.js";
+
+import {
+  postOdometerReading, getOdometer, getStats as getFleetStats,
+  getScanCompliance, getExpiryAlerts, postMaintenanceRequest, postMaintenanceTransition
+} from "./controllers/fleetComplianceController.js";
+
+import {
+  postCreateJsa, postSubmitJsa, postApproveJsa, postRejectJsa, getJsaCheck,
+  postCreateInspection, postRecordResults, postSubmitInspection, postSignOff
+} from "./controllers/hseQualityController.js";
+
+import {
+  postRegisterDocument, postVerifyDocument, postRejectDocument,
+  getPortfolio, getCompliance, getExpiring
+} from "./controllers/artisanDocumentController.js";
+
+import {
+  postUpload, getFile, getEntityFiles, deleteFile, getUploadStats
+} from "./controllers/fileUploadController.js";
+
+const router = express.Router();
+
+// Public routes
+router.post("/auth/login", validate(LoginSchema), loginDemoUser);
+router.post("/auth/google", loginWithGoogle);
+router.post("/auth/totp/verify", verifyTotpLogin);
+router.post("/auth/totp/enrollment/start", beginTotpEnrollment);
+router.post("/auth/totp/enrollment/confirm", confirmTotpEnrollment);
+router.post("/leads", idempotencyKeyMiddleware, validate(CreateLeadSchema), createLead);
+
+// NEW — Phase 6: forgot/reset password (public; token proves identity).
+// Not run through the `validate()` middleware — schemas.js's exact export
+// conventions weren't available when this was written. Both functions do
+// their own inline validation. Add proper zod schemas here once schemas.js
+// is available, for consistency with the rest of the router.
+router.post("/auth/request-password-reset", requestPasswordReset);
+router.post("/auth/reset-password", resetPassword);
+
+// NEW — Phase 6: "Request Access" replaces open self-signup. Public
+// submission only; approval requires auth + manageUsers (below).
+router.post("/access-requests", createAccessRequest);
+
+// Protected routes
+router.use(authMiddleware);
+
+router.get("/auth/me", getMe);
+router.post("/auth/totp/enrollment/tickets", issueTotpEnrollmentTicket);
+router.post("/auth/totp/factor/reset", resetTotpFactor);
+router.post("/auth/totp/factor/reset/request", requestTotpFactorReset);
+router.post("/auth/totp/factor/reset/approve", approveTotpFactorReset);
+router.get("/summary", getSummary);
+router.get("/exports/pastel.csv", exportPastel);
+router.get("/exports/pastel-review/quotes.csv", getPastelReviewQuotes);
+router.get("/exports/pastel-review/invoice-ready.csv", getPastelReviewInvoiceReady);
+router.post("/imports/leads/preview", previewLeadImport);
+router.post("/imports/leads/commit", commitLeadImport);
+router.get("/imports/clients/template", downloadImportTemplate("clients"));
+router.get("/imports/catalog_items/template", downloadImportTemplate("catalog_items"));
+router.post("/imports/clients/preview", previewMasterDataImport("clients"));
+router.post("/imports/clients/commit", commitMasterDataImport("clients"));
+router.post("/imports/catalog_items/preview", previewMasterDataImport("catalog_items"));
+router.post("/imports/catalog_items/commit", commitMasterDataImport("catalog_items"));
+router.get("/imports", listImportJobs);
+router.get("/imports/:id", getImportJob);
+router.get("/analytics/operational", getOperationalAnalytics);
+
+// Phase 0.5 is deterministic and providerless. These routes have no model,
+// provider, free-text, or business-record mutation capability.
+router.get("/ai/health", getAiHealth);
+router.post("/ai/briefing", getBriefing);
+router.post("/ai/attention", getAttentionItems);
+router.post("/ai/explain", getMetricExplanation);
+router.post("/ai/chat", getChatResponse);
+router.post("/ai/workflow", getWorkflowGuide);
+router.post("/ai/record-analysis", getRecordAnalysis);
+router.post("/ai/feedback", flagAiResponse);
+
+// Printable/document-data endpoints (Phase 03)
+router.get("/document-data/quotes/:id", getQuoteDocument);
+router.get("/document-data/dispatch_cards/:id", getDispatchDocument);
+router.get("/document-data/field_worksheets/:id", getWorksheetDocument);
+router.get("/document-data/invoices/:id", getInvoiceDocument);
+router.get("/document-data/purchase_orders/:id", getPoDocument);
+router.get("/document-data/daily-task-report", getDailyTaskReport);
+router.get("/document-data/invoice-ready-summary", getInvoiceReadySummary);
+router.get("/document-data/client-completion/:id", getClientCompletionRecord);
+router.get("/document-data/daily_timesheets/:id", getDailyTimesheetDocument);
+router.get("/document-data/contractor_log_sheets/:id", getContractorLogDocument);
+router.get("/document-data/worksheet_registers/:id", getWorksheetRegisterDocument);
+
+// Printable document endpoints (Phase 09)
+router.get("/documents/quotes/:id.pdf", getQuotePdf);
+router.get("/documents/job-cards/:id.pdf", getJobCardPdf);
+router.get("/documents/worksheets/:id.pdf", getWorksheetPdf);
+router.get("/documents/invoices/:id.pdf", getInvoicePdf);
+router.post("/invoices/:id/void", voidInvoice);
+router.get("/invoices/:id/settlement", getInvoiceSettlement);
+router.post("/invoices/:id/payments", idempotencyKeyMiddleware, validate(RecordInvoicePaymentSchema), recordInvoicePayment);
+router.post("/invoices/:id/payments/:paymentId/void", validate(VoidInvoicePaymentSchema), voidInvoicePayment);
+router.post("/invoices/:id/credit-notes", idempotencyKeyMiddleware, validate(CreateInvoiceCreditNoteSchema), createInvoiceCreditNote);
+router.post("/credit-notes/:creditNoteId/issue", validate(IssueInvoiceCreditNoteSchema), issueInvoiceCreditNote);
+router.get("/documents/purchase-orders/:id.pdf", getPoDocumentPdf);
+
+// Reports (Phase 04)
+router.get("/job-tracker", getJobTracker);
+router.get("/reports/pipeline", getPipelineReport);
+router.get("/reports/po-compliance", getPoComplianceReport);
+router.get("/reports/dispatch", getDispatchReport);
+router.get("/reports/worksheets", getWorksheetReport);
+router.get("/reports/invoice-ready", getInvoiceReadyReport);
+router.get("/reports/variance", getVarianceReport);
+router.get("/reports/technician-payroll", getTechnicianPayrollReport);
+router.get("/exports/pastel-payroll.csv", exportTechnicianPayrollPastel);
+// Admin Settings (Phase 05)
+router.post("/admin/users", validate(AdminCreateUserSchema), createUser);
+router.patch("/admin/users/:id", validate(AdminUpdateUserSchema), updateUser);
+router.post("/admin/clients", validate(AdminCreateClientSchema), createClient);
+router.patch("/admin/clients/:id", validate(AdminUpdateClientSchema), updateClient);
+router.post("/admin/mine_sites", validate(AdminCreateMineSiteSchema), createMineSite);
+router.patch("/admin/mine_sites/:id", validate(AdminUpdateMineSiteSchema), updateMineSite);
+router.post("/admin/plants", validate(AdminCreatePlantSchema), createPlant);
+router.patch("/admin/plants/:id", validate(AdminUpdatePlantSchema), updatePlant);
+router.post("/admin/plant_sections", validate(AdminCreatePlantSectionSchema), createPlantSection);
+router.patch("/admin/plant_sections/:id", validate(AdminUpdatePlantSectionSchema), updatePlantSection);
+router.post("/admin/equipment_tags", validate(AdminCreateEquipmentTagSchema), createEquipmentTag);
+router.patch("/admin/equipment_tags/:id", validate(AdminUpdateEquipmentTagSchema), updateEquipmentTag);
+router.post("/admin/catalog_items", validate(AdminCreateCatalogItemSchema), createCatalogItem);
+router.patch("/admin/catalog_items/:id", validate(AdminUpdateCatalogItemSchema), updateCatalogItem);
+router.get("/admin/company_profile", getCompanyProfile);
+router.patch("/admin/company_profile", validate(AdminCompanyProfileSchema), updateCompanyProfile);
+
+// NEW — Phase 6: Access request review (Admin only, enforced inside the
+// controller via requirePermission(actor, "manageUsers")).
+router.post("/access-requests/:id/approve", approveAccessRequest);
+router.post("/access-requests/:id/reject", rejectAccessRequest);
+router.post("/access-requests/:id/setup-link", issueAccessRequestSetupLink);
+
+// Quotes
+router.post("/quotes", validate(CreateQuoteSchema), createQuote);
+router.patch("/quotes/:id", validate(UpdateQuoteSchema), updateQuote);
+router.post("/quotes/:id/revisions", validate(CreateQuoteRevisionSchema), createQuoteRevision);
+router.post("/quotes/:id/amended-po-evidence", validate(RecordAmendedPoEvidenceSchema), recordAmendedPoEvidence);
+router.post("/quotes/:id/approve-amendment", validate(ApproveV5AmendmentSchema), approveV5Amendment);
+router.post("/quotes/:id/cancel", cancelQuote);
+router.post("/quotes/:id/transition", validate(TransitionQuoteSchema), transition);
+router.post("/quotes/:id/po", validate(VerifyPoSchema), capturePo);
+router.post("/quotes/:id/client-po", validate(ClientSubmitPoSchema), submitClientPo);
+router.post("/quotes/:id/record-po", validate(ClientSubmitPoSchema), submitClientPo);
+router.post("/quotes/:id/reject-po", validate(RejectPoSchema), rejectPo);
+router.get("/trail/quotes/:id", getQuoteTrail);
+
+// Dispatches & Worksheets
+router.get("/dispatch_cards/:id/job-card", getDispatchJobCard);
+router.get("/dispatch_cards/:id/invoice-readiness", getDispatchInvoiceReadiness);
+router.get("/dispatch_cards/:id/legacy-invoice-drafts", listLegacyInvoiceDrafts);
+router.post("/dispatch_cards/:id/legacy-invoice-drafts", validate(CreateLegacyInvoiceDraftSchema), createLegacyInvoiceDraft);
+router.post("/legacy-invoice-drafts/:id/issue", validate(IssueLegacyInvoiceDraftSchema), issueLegacyInvoiceDraft);
+router.post("/dispatch_cards/:id/timesheets", validate(AddTimesheetSchema), addTimesheet);
+router.get("/dispatch_cards/:id/timesheets", listDispatchTimesheets);
+router.get("/timesheets/kiosk-review", listKioskReviewQueue);
+router.post("/timesheets/:id/review", validate(ReviewKioskTimesheetSchema), reviewKioskTimesheet);
+router.get("/kiosk/dispatch_cards/:id/roster", getKioskRoster);
+router.post("/kiosk/dispatch_cards/:id/timesheets", validate(KioskTimesheetBatchSchema), submitKioskTimesheets);
+router.post("/dispatch_cards/:id/materials", validate(AddMaterialSchema), addMaterialUsage);
+router.get("/dispatch_cards/:id/materials/status", getDispatchMaterialStatus);
+router.post("/dispatch_cards/:id/v5-material-allocations", validate(V5MaterialAllocationSchema), allocateV5MaterialUsage);
+router.post("/dispatch_cards/:id/v5-amendment-links", validate(V5AmendmentDispatchLinkSchema), linkV5AmendmentToDispatch);
+router.post("/dispatch_cards/:id/v5-amendment-evidence-allocations", validate(V5AmendmentEvidenceAllocationSchema), allocateV5AmendmentEvidence);
+router.post("/dispatch_cards/:id/worksheets", validate(CreateTimesheetSchemaV2), createWorksheet);
+router.get("/dispatch_cards/:id/roster", getDispatchRoster);
+router.post("/dispatch_cards/:id/roster", validate(AssignRosterSchema), assignRosterTechnician);
+router.post("/dispatch_cards/:id/supervisor", validate(AssignDispatchSupervisorSchema), assignDispatchSupervisor);
+router.post("/field_worksheets/:id/submit", submitWorksheet);
+router.patch("/field_worksheets/:id", validate(UpdateTimesheetSchemaV2), updateWorksheet);
+router.post("/field_worksheets/:id/review", validate(ReviewWorksheetSchema), reviewWorksheet);
+// Legacy forms are READ-ONLY history. New work is recorded on a Timesheet. Existing legacy
+// records can still be edited, submitted and reviewed so nothing in flight is stranded.
+// Set LEGACY_TIMESHEET_FORM_CREATION=enabled to reopen creation (rollback switch).
+const legacyFormCreationGate = (req, res, next) => {
+  if (process.env.LEGACY_TIMESHEET_FORM_CREATION === "enabled") return next();
+  return res.status(409).json({ success: false, code: "LEGACY_FORM_READ_ONLY", message: "Daily Time Sheets and Contractor Logs are now read-only history. Record the work on a Timesheet." });
+};
+router.get("/technician-profiles", listTechnicianProfiles);
+router.post("/technicians/:id/settlement-details/access", accessTechnicianSettlementDetails);
+router.post("/daily_timesheets", legacyFormCreationGate, validate(CreateDailyTimesheetSchema), createDailyTimesheet);
+router.patch("/daily_timesheets/:id", validate(UpdateDailyTimesheetSchema), updateDailyTimesheet);
+router.post("/daily_timesheets/:id/submit", submitDailyTimesheet);
+router.get("/daily-timesheet-review-queue", listDailyTimesheetReviewQueue);
+router.post("/daily_timesheets/:id/reopen", reopenDailyTimesheet);
+router.post("/daily_timesheets/:id/review", validate(ReviewDailyTimesheetSchema), reviewDailyTimesheet);
+router.post("/contractor_log_sheets", legacyFormCreationGate, validate(CreateContractorLogSchema), createContractorLog);
+router.patch("/contractor_log_sheets/:id", validate(UpdateContractorLogSchema), updateContractorLog);
+router.post("/contractor_log_sheets/:id/submit", submitContractorLog);
+router.post("/contractor_log_sheets/:id/review", validate(ReviewContractorLogSchema), reviewContractorLog);
+// Worksheet (explicit routes, deliberately not in the generic `collections` list below).
+router.get("/legacy_timesheets", listLegacyTimesheets);
+router.get("/worksheet_registers", listWorksheetRegisters);
+router.post("/worksheet_registers/preview", validate(PreviewWorksheetRegisterSchema), previewWorksheetRegister);
+router.post("/worksheet_registers", validate(CreateWorksheetRegisterSchema), createWorksheetRegister);
+router.get("/worksheet_registers/:id", getWorksheetRegister);
+router.patch("/worksheet_registers/:id", validate(UpdateWorksheetRegisterSchema), updateWorksheetRegister);
+router.post("/worksheet_registers/:id/build", buildWorksheetRegister);
+router.post("/worksheet_registers/:id/acknowledge", validate(AcknowledgeRegisterExceptionsSchema), acknowledgeRegisterExceptions);
+router.post("/worksheet_registers/:id/submit", submitWorksheetRegister);
+router.post("/worksheet_registers/:id/review", validate(ReviewWorksheetRegisterSchema), reviewWorksheetRegister);
+router.post("/worksheet_registers/:id/cancel", validate(CancelWorksheetRegisterSchema), cancelWorksheetRegister);
+router.post("/worksheet_registers/:id/reconcile", validate(ReconcileWorksheetRegisterSchema), reconcileWorksheetRegister);
+router.get("/field_worksheets/mine/client", listOwnClientTimesheets);
+router.post("/field_worksheets/:id/client-acknowledge", validate(ClientAcknowledgeWorksheetSchema), acknowledgeWorksheet);
+router.post("/field_worksheets/:id/client-return", validate(ClientReturnWorksheetSchema), returnWorksheetByClient);
+router.get("/timesheet-policy", getTimesheetPolicy);
+router.patch("/timesheet-policy", updateTimesheetPolicy);
+router.get("/timesheet-authorities", listTimesheetAuthorities);
+router.post("/timesheet-authorities", createTimesheetAuthority);
+router.post("/timesheet-authorities/:id/revoke", revokeTimesheetAuthority);
+router.patch("/clients/:id/timesheet-cutover", setClientCutover);
+router.get("/timesheets/rate-free", listTimesheetsRateFree);
+router.get("/dispatch_cards/:id/v5-billing-readiness", getV5BillingReadiness);
+router.get("/dispatch_cards/:id/v5-invoice-preview", getV5InvoicePreview);
+router.get("/dispatch_cards/:id/v5-invoice-draft-workspace", getV5InvoiceDraftWorkspace);
+router.get("/dispatch_cards/:id/v5-invoice-drafts", listDispatchV5InvoiceDrafts);
+router.post("/dispatch_cards/:id/v5-invoice-drafts", validate(CreateV5InvoiceDraftSchema), createV5InvoiceDraft);
+router.get("/v5-invoice-drafts/:id", getV5InvoiceDraft);
+router.post("/v5-invoice-drafts/:id/issue", validate(IssueV5InvoiceDraftSchema), issueV5InvoiceDraft);
+router.post("/dispatch_cards/:id/v5-line-completions", validate(V5LineCompletionSchema), recordV5LineCompletion);
+router.post("/dispatch_cards/:id/v5-amendment-supersessions", validate(V5AmendmentSupersessionSchema), supersedeV5Amendment);
+router.post("/dispatch_cards/:id/v5-allocation-remaps", validate(V5AllocationRemapSchema), remapV5Allocation);
+router.get("/v5-invoices/:id", getV5Invoice);
+router.get("/dispatch_cards/:id/v5-invoices", listDispatchV5Invoices);
+router.get("/dispatch_cards/:id/v5-invoice-billing-state", getV5InvoiceBillingState);
+router.get("/dispatch_cards/:id/v5-client-supervisor-contacts", listV5ClientSupervisorContacts);
+router.post("/dispatch_cards/:id/v5-client-supervisor-contacts", validate(V5ClientSupervisorContactSchema), createV5ClientSupervisorContact);
+router.post("/v5-client-supervisor-contacts/:id/withdraw", withdrawV5ClientSupervisorContact);
+router.get("/field_worksheets/:id/v5-signature-state", getV5SignatureState);
+router.post("/field_worksheets/:id/v5-paper-signature", validate(V5PaperSignatureSchema), recordV5PaperSignature);
+router.post("/field_worksheets/:id/v5-supervisor-confirmation", validate(V5SupervisorConfirmationSchema), confirmV5Timesheet);
+router.post("/field_worksheets/paper-capture", capturePaperTimesheet);
+router.post("/timesheet-paper-custody", logPaperCustody);
+router.post("/field_worksheets/batch-confirm", batchConfirmTimesheets);
+router.post("/timesheets/reminders/run", runTimesheetReminders);
+router.get("/timesheets/paper-sampling", getPaperSampling);
+router.get("/dispatch_cards/:id/invoice-variance", getInvoiceVariance);
+router.get("/dispatch_cards/:id/po-variance", getDispatchPoVariance);
+router.get("/worksheet_registers/:id/po-variance", getRegisterPoVariance);
+router.post("/quotes/:id/po-scope-evidence", attachPoScopeEvidence);
+router.post("/dispatch_cards/:id/variance-override", requestVarianceOverride);
+router.post("/variance-overrides/:id/approve", approveVarianceOverride);
+router.post("/field_worksheets/:id/resolve-post-invoice", resolvePostInvoiceRevision);
+router.post("/field_worksheets/:id/revise", validate(ReviseWorksheetSchema), reviseWorksheet);
+router.get("/reports/timesheets/period-pack", getTimesheetPeriodPack);
+router.get("/documents/timesheets/period-pack.pdf", getTimesheetPeriodPackPdf);
+router.get("/reports/timesheets/period-summary", getTimesheetPeriodSummary);
+
+// Purchase Orders
+router.post("/purchase_orders/:id/amendments", validate(ApproveAmendmentSchema), approveAmendment);
+
+// Inventory & Procurement (Phase 07)
+router.get("/inventory/suppliers", getSuppliers);
+router.post("/inventory/suppliers", validate(CreateSupplierSchema), createSupplier);
+router.patch("/inventory/suppliers/:id", validate(UpdateSupplierSchema), updateSupplier);
+router.get("/inventory/stock_items", getStockItems);
+router.post("/inventory/stock_items", validate(CreateStockItemSchema), createStockItem);
+router.patch("/inventory/stock_items/:id", validate(UpdateStockItemSchema), updateStockItem);
+router.post("/inventory/movements", validate(StockMovementSchema), recordStockMovement);
+// Chat C's authorised direct-sale stock-issue contract (see
+// CHAT_C_DIRECT_SALE_STOCK_ISSUE_CONTRACT.md). Goes through the same
+// applyStockChange() as every other write here — no second deduction path.
+router.post("/inventory/movements/direct-sale", validate(DirectSaleStockIssueSchema), issueDirectSaleStock);
+// Read-only ledger views. No PATCH/DELETE exists for either — a movement,
+// once written, is never edited or removed (see inventoryController.js).
+router.get("/inventory/movements", getStockMovements);
+router.get("/inventory/stock_items/:id/movements", getStockItemMovements);
+router.get("/inventory/reports/low-stock", getLowStockReport);
+router.get("/inventory/reconciliation", getInventoryReconciliation);
+
+// Notifications (Phase 08)
+router.get("/notifications", getNotifications);
+router.post("/notifications/read-all", markAllRead);
+router.post("/notifications/:id/read", markRead);
+
+// Client Service Requests: Client Viewer request -> Sales/Operations triage ->
+// one explicit lead. Role and client scoping are enforced inside the controller.
+// Deliberately NOT a generic collection route (see collectionGuards).
+router.post("/service-requests", validate(CreateServiceRequestSchema), createServiceRequest);
+router.get("/service-requests/mine", listOwnServiceRequests);
+router.get("/service-requests/triage", listServiceRequestTriageQueue);
+router.post("/service-requests/:id/triage", validate(TriageServiceRequestSchema), triageServiceRequest);
+router.post("/service-requests/:id/convert-lead", convertServiceRequestToLead);
+
+// Internal Work Requests: controlled staff-to-staff requests. Explicit routes
+// only; NOT in the generic `collections` list below, so the generic GET/deactivate
+// routes can never expose or archive them. Scope (own outbox, role inbox,
+// participant-only detail) is enforced inside the controller from the session.
+// Fixed paths are registered before `/:id` so they are never read as an id.
+router.get("/internal-work-requests/options", getInternalWorkRequestOptions);
+router.get("/internal-work-requests/outbox", listInternalWorkRequestOutbox);
+router.get("/internal-work-requests/inbox", listInternalWorkRequestInbox);
+router.get("/internal-work-requests/:id", getInternalWorkRequest);
+router.post("/internal-work-requests", validate(CreateInternalWorkRequestSchema), createInternalWorkRequest);
+router.post("/internal-work-requests/:id/acknowledge", acknowledgeInternalWorkRequest);
+router.post("/internal-work-requests/:id/approve-technician", approveTechnicianRegistration);
+router.post("/internal-work-requests/:id/transition", validate(TransitionInternalWorkRequestSchema), transitionInternalWorkRequest);
+
+// Contracts & preventative maintenance (pilot). Explicit routes only. These
+// records are deliberately NOT in the generic `collections` list below, so the
+// generic GET/deactivate routes can never expose or archive them. The controller
+// checks the role, validates the body, and scopes Client Viewer reads itself.
+router.get("/contracts", listContracts);
+router.post("/contracts", createContract);
+router.patch("/contracts/:id", updateContract);
+router.get("/maintenance-schedules", listMaintenanceSchedules);
+router.post("/maintenance-schedules", createMaintenanceSchedule);
+router.patch("/maintenance-schedules/:id", updateMaintenanceSchedule);
+
+// Subsystem 3: Supply Chain & Procurement routes
+router.get("/procurement/requests", listProcurementRequests);
+router.post("/procurement/requests", createProcurementRequest);
+router.post("/procurement/requests/:id/approve", approveProcurementRequest);
+router.get("/procurement/supplier-pos", listSupplierPos);
+router.post("/procurement/supplier-pos", createSupplierPo);
+router.get("/procurement/grns", listGrns);
+router.post("/procurement/grns", receiveGrn);
+router.get("/procurement/store-issue-vouchers", listStoreIssueVouchers);
+router.post("/procurement/store-issue-vouchers", issueStoreVoucher);
+router.post("/procurement/three-way-match", performThreeWayMatch);
+router.get("/procurement/summary", getProcurementSummary);
+
+// Subsystem 4: Fleet & Logistics routes
+router.get("/fleet/vehicles", listVehicles);
+router.post("/fleet/vehicles", createVehicle);
+router.post("/fleet/dispatches", dispatchVehicle);
+router.post("/fleet/dispatches/:id/return", returnVehicle);
+router.post("/fleet/fuel-logs", logFuel);
+router.get("/fleet/summary", getFleetSummary);
+
+// Subsystem 5: HSE Compliance routes
+router.post("/hse/ppe-checklists", recordPreDispatchPpe);
+router.get("/hse/ppe-checklists", listPpeChecklists);
+router.post("/hse/toolbox-talks", createToolboxTalk);
+router.get("/hse/toolbox-talks", listToolboxTalks);
+router.post("/hse/incidents", reportIncident);
+router.get("/hse/incidents", listIncidents);
+router.get("/hse/summary", getHseSummary);
+
+// Subsystem 6: HR Artisan Qualifications Vault & Mine Inductions (S-10 Sensitive Gate)
+router.post("/artisans/qualifications", createArtisanQualification);
+router.get("/artisans/qualifications", listArtisanQualifications);
+router.post("/artisans/inductions", recordMineInduction);
+router.get("/artisans/inductions", listMineInductions);
+router.post("/artisans/verify-dispatch-gate", verifyArtisanDispatchGate);
+router.get("/artisans/summary", getArtisanVaultSummary);
+
+// Subsystem 10: Virtual Technical Surveys & AI Minutes
+router.post("/surveys/book", bookSurvey);
+router.get("/surveys", listSurveys);
+router.get("/surveys/:id/room", getSurveyMeetingAccess);
+router.post("/surveys/:id/notes", completeSurveyWithNotes);
+router.post("/surveys/:id/extract-ai-scope", extractSurveyAiScopeAndDraftQuote);
+router.get("/surveys/summary", getSurveySummary);
+
+// Subsystems 8 & 11: Client Feedback, NPS & Universal QR Engine
+router.post("/feedback", submitFeedback);
+router.get("/feedback", listFeedbacks);
+router.post("/feedback/:id/triage", resolveFeedbackTriage);
+router.get("/feedback/summary", getFeedbackSummary);
+router.post("/qr/generate", generateQrToken);
+router.get("/reports/qbr-deck", getQbrReportDeck);
+
+// Subsystem 12: Plant IoT Telemetry & Condition Monitoring
+router.post("/telemetry/ingest", ingestTelemetry);
+router.get("/telemetry/equipment/:tagId", getEquipmentTelemetry);
+router.get("/telemetry/alerts", listAlerts);
+router.post("/telemetry/alerts/:id/resolve", resolveAlert);
+router.get("/telemetry/summary", getTelemetrySummary);
+
+// Subsystem 13: Offline Field Sync Engine
+router.post("/sync/batch", syncBatchMutations);
+router.get("/sync/journal", getSyncJournal);
+router.post("/sync/conflicts/:id/resolve", resolveConflict);
+
+// Subsystem 1: Macro-Dashboard Role-Summary Aggregator
+router.get("/dashboard/role-summary", getRoleDashboardSummary);
+
+
+
+
+// Dedicated Sales Portfolio Endpoints
+router.get("/sales/portfolio/dispatches", getSalesPortfolioDispatches);
+router.get("/sales-portfolio/dispatches", getSalesPortfolioDispatches);
+router.get("/sales/portfolio/dispatches/:id/progress", getSalesDispatchProgress);
+router.get("/sales-portfolio/dispatches/:id/progress", getSalesDispatchProgress);
+router.get("/sales/portfolio/dispatches/:id/approved-work", getSalesApprovedWorkSummary);
+router.get("/sales-portfolio/dispatches/:id/approved-work", getSalesApprovedWorkSummary);
+router.get("/sales/portfolio/dispatches/:id/materials", getSalesMaterialsSummary);
+router.get("/sales-portfolio/dispatches/:id/materials", getSalesMaterialsSummary);
+router.get("/sales/portfolio/invoices", getSalesPortfolioInvoices);
+router.get("/sales-portfolio/invoices", getSalesPortfolioInvoices);
+router.get("/sales/portfolio/purchase_orders", getSalesPortfolioPurchaseOrders);
+router.get("/sales-portfolio/purchase_orders", getSalesPortfolioPurchaseOrders);
+
+// Admin / Management Commercial Ownership Assignment
+router.post("/admin/commercial-ownership/assign", assignCommercialOwnership);
+
+// S-02: Maker-Checker 2-Person Bank Approval
+router.post("/bank-change-proposals", createProposal);
+router.get("/bank-change-proposals", listProposals);
+router.get("/bank-change-proposals/:id", getProposal);
+router.post("/bank-change-proposals/:id/approve", approveProposal);
+router.post("/bank-change-proposals/:id/reject", rejectProposal);
+
+// Communications Preview (Batch 1 — zero sending risk)
+router.get("/communications/templates", listCommunicationTemplates);
+router.get("/communications/templates/:name", getCommunicationTemplate);
+router.post("/communications/preview", previewCommunication);
+router.get("/communications/timeline/:entityType/:entityId", getTimeline);
+router.post("/communications/evidence", recordEvidence);
+router.get("/communications/digest", getDigest);
+
+// Leave & Absence Management
+router.get("/leave-types", getLeaveTypes);
+router.post("/leave-requests", createLeave);
+router.get("/leave-requests", listLeaves);
+router.get("/leave-requests/:id", getLeave);
+router.post("/leave-requests/:id/submit", submitLeave);
+router.post("/leave-requests/:id/approve", approveLeave);
+router.post("/leave-requests/:id/reject", rejectLeave);
+router.post("/leave-requests/:id/cancel", cancelLeave);
+router.get("/leave-balance/:userId", getBalance);
+router.get("/leave-calendar", getCalendar);
+
+  // ── Gantt Scheduling ──────────────────────────────────────────────
+  router.get("/scheduling/gantt", getGanttTimeline);
+  router.get("/scheduling/utilisation", getUtilisation);
+  router.get("/scheduling/conflicts", getConflicts);
+  router.post("/scheduling/reschedule", postReschedule);
+
+
+  // ── Reorder Alerts ────────────────────────────────────────────────
+  router.post("/inventory/reorder-alerts/scan", postScanAlerts);
+  router.get("/inventory/reorder-alerts", getAlerts);
+  router.get("/inventory/reorder-alerts/summary", getAlertSummary);
+  router.post("/inventory/reorder-alerts/:id/acknowledge", postAcknowledge);
+  router.post("/inventory/reorder-alerts/:id/dismiss", postDismiss);
+
+  // ── Fleet Compliance ──────────────────────────────────────────────
+  router.post("/fleet/odometer", postOdometerReading);
+  router.get("/fleet/odometer/:vehicleId", getOdometer);
+  router.get("/fleet/odometer/:vehicleId/stats", getFleetStats);
+  router.get("/fleet/compliance", getScanCompliance);
+  router.get("/fleet/compliance/alerts", getExpiryAlerts);
+  router.post("/fleet/maintenance", postMaintenanceRequest);
+  router.post("/fleet/maintenance/:id/transition", postMaintenanceTransition);
+
+  // ── HSE Quality (JSA + Inspections) ───────────────────────────────
+  router.post("/hse/jsa", postCreateJsa);
+  router.post("/hse/jsa/:id/submit", postSubmitJsa);
+  router.post("/hse/jsa/:id/approve", postApproveJsa);
+  router.post("/hse/jsa/:id/reject", postRejectJsa);
+  router.get("/hse/jsa/:dispatchId/check", getJsaCheck);
+  router.post("/hse/inspections", postCreateInspection);
+  router.post("/hse/inspections/:id/results", postRecordResults);
+  router.post("/hse/inspections/:id/submit", postSubmitInspection);
+  router.post("/hse/inspections/:id/sign-off", postSignOff);
+
+  // ── Artisan Document Storage ──────────────────────────────────────
+  router.post("/artisan/documents", postRegisterDocument);
+  router.post("/artisan/documents/:id/verify", postVerifyDocument);
+  router.post("/artisan/documents/:id/reject", postRejectDocument);
+  router.get("/artisan/:technicianId/portfolio", getPortfolio);
+  router.get("/artisan/:technicianId/compliance", getCompliance);
+  router.get("/artisan/documents/expiring", getExpiring);
+
+  // ── File Upload ───────────────────────────────────────────────────
+  router.post("/uploads", postUpload);
+  router.get("/uploads/stats", getUploadStats);
+  router.get("/uploads/:id", getFile);
+  router.get("/uploads/entity/:entityType/:entityId", getEntityFiles);
+  router.delete("/uploads/:id", deleteFile);
+
+// Generic GET endpoints for collections
+const collections = [
+  "users", "clients", "leads", "quotes", "quote_lines",
+  "purchase_orders", "dispatch_cards", "field_worksheets", "daily_timesheets", "contractor_log_sheets",
+  "invoices", "equipment_tags", "catalog_items", "audit_logs",
+  "mine_sites", "plants", "plant_sections",
+  "suppliers", "stock_items", "stock_movements",
+  "access_requests"
+];
+
+collections.forEach((collection) => {
+  router.get(`/${collection}`, getCollection(collection));
+  router.post(`/admin/${collection}/:id/deactivate`, deactivateEntity(collection));
+  router.post(`/admin/${collection}/:id/reactivate`, reactivateEntity(collection));
+});
+
+export default router;

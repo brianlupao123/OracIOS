@@ -1,0 +1,71 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("portal navigation stays policy-derived (no hard-coded role links)", () => {
+  const file = read("src/layouts/PortalLayout.jsx");
+  assert.match(file, /import \{ sidebarGroups \} from "\.\.\/navModel\.js"/);
+  assert.match(file, /sidebarGroups\(user\.role\)/);
+  assert.match(read("src/navModel.js"), /visibleNavigationGroups\(role\)/);
+  // Guard against role names being hard-coded into the layout itself.
+  for (const role of ["Admin", "Management", "Sales", "Finance", "Operations", "Supervisor", "Technician", "Client Viewer"]) {
+    assert.doesNotMatch(file, new RegExp(`"${role}"`));
+  }
+});
+
+test("nav and footer no longer use the unconverted navy utility that fails dark-mode contrast", () => {
+  const file = read("src/layouts/PortalLayout.jsx");
+  // These utilities have no dark-mode override in index.css, so using them for
+  // text on a dark surface previously produced ~1.8:1 contrast (fails WCAG AA).
+  assert.doesNotMatch(file, /hover:text-orac-navy/);
+  assert.doesNotMatch(file, /className="font-semibold text-orac-navy/);
+  assert.match(file, /hover:text-orac-text-primary/);
+  assert.match(file, /className="font-semibold text-orac-blue/);
+});
+
+test("from 1100px the shell shows a persistent 264px sidebar and the top bar drops brand, hamburger and menu", () => {
+  const file = read("src/layouts/PortalLayout.jsx");
+  assert.match(file, /<aside aria-label="Sidebar" className="orac-sidebar sticky top-0 hidden h-screen w-\[264px\] shrink-0 min-\[1100px\]:block">/);
+  assert.match(file, /<SidebarPanel user=\{user\} navGroups=\{navGroups\} onLogout=\{onLogout\} \/>/);
+  assert.match(file, /flex min-\[1100px\]:hidden items-center justify-center h-11 w-11/);
+  assert.doesNotMatch(file, /orac-primary-nav/);
+  assert.doesNotMatch(file, /WorkspaceNavMenu/);
+});
+
+test("only one top-level sign-out affordance competes for space at narrow widths", () => {
+  const file = read("src/layouts/PortalLayout.jsx");
+  assert.match(file, /orac-header-signout hidden items-center rounded-md border border-gray-200[^"]*xl:inline-flex/);
+  assert.match(file, /<UserProfileDropdown user=\{user\} onSignOut=\{onLogout\} \/>/);
+});
+
+test("dashboard no longer renders the duplicate role-metrics progress-bar section", () => {
+  const file = read("src/pages/DashboardPage.jsx");
+  assert.doesNotMatch(file, /RoleMetricChart/);
+  assert.doesNotMatch(file, /evidence-chart-role-summary/);
+});
+
+test("dashboard renders priorities before the general overview KPIs", () => {
+  const file = read("src/pages/DashboardPage.jsx");
+  const prioritiesIndex = file.indexOf("evidence-section-role-priorities");
+  const overviewIndex = file.indexOf("evidence-kpi-clients");
+  assert.ok(prioritiesIndex > -1 && overviewIndex > -1);
+  assert.ok(prioritiesIndex < overviewIndex, "priorities section must precede the overview KPI grid");
+});
+
+test("the floating AI assistant renders after the dashboard content in document order", () => {
+  const file = read("src/pages/DashboardPage.jsx");
+  const worksheetsIndex = file.indexOf("evidence-section-worksheets");
+  const assistantIndex = file.lastIndexOf("<AIAssistantPanel user={user} />");
+  assert.ok(worksheetsIndex > -1 && assistantIndex > -1);
+  assert.ok(assistantIndex > worksheetsIndex, "assistant should be last for natural tab order (it is fixed-position, so this has no visual effect)");
+});
+
+test("the floating guide clears compact labelled navigation", () => {
+  const guide = read("src/components/AIAssistantPanel.jsx");
+  const styles = read("src/index.css");
+  assert.match(guide, /className="orac-guide-trigger fixed right-4/);
+  assert.match(styles, /\.orac-guide-trigger \{ bottom: calc\(5\.5rem \+ env\(safe-area-inset-bottom\)\); \}/);
+  assert.match(styles, /@media \(min-width: 900px\) \{\s*\.orac-guide-trigger \{ right: 1\.5rem; bottom: 1\.5rem; \}/);
+});
