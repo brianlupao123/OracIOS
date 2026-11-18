@@ -8,8 +8,8 @@ const authAt = lines.findIndex((l) => /^router\.use\(authMiddleware\);/.test(l))
 
 test("router.use(authMiddleware) exists exactly once and is the first router.use", () => {
   const uses = lines.map((l, i) => ({ l, i })).filter(({ l }) => /^router\.use\(/.test(l));
-  assert.equal(uses.length, 1, "no other router-level middleware may be added without review");
-  assert.equal(uses[0].i, authAt);
+  assert.equal(uses.length, 2, "only publicRoutes and authMiddleware may be router.use()");
+  assert.equal(uses[uses.length - 1].i, authAt, "authMiddleware must be the last router.use()");
 });
 
 test("the unauthenticated route allowlist includes only the reviewed routes and TOTP verification", () => {

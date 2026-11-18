@@ -148,7 +148,10 @@ export const permissions = {
   // ── Public Prospect ──
   submitPublicEnquiry: [roles.PUBLIC_PROSPECT],
   viewPublicCatalog: [roles.PUBLIC_PROSPECT],
-  viewOwnEnquiryStatus: [roles.PUBLIC_PROSPECT]
+  viewOwnEnquiryStatus: [roles.PUBLIC_PROSPECT],
+  // ── Booking & Schedule (public website integration) ──
+  manageBookings: [roles.ADMIN, roles.MANAGEMENT, roles.SALES],
+  manageBookingSettings: [roles.ADMIN, roles.MANAGEMENT, roles.OPERATIONS]
 };
 
 // Timesheet workflow packet (contract steps 3-9). Every overlay is DARK: with its

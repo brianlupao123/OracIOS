@@ -225,6 +225,8 @@ import {
   postUpload, getFile, getEntityFiles, deleteFile, getUploadStats
 } from "./controllers/fileUploadController.js";
 
+import publicRoutes from "./modules/public/routes.js";
+
 const router = express.Router();
 
 // Public routes
@@ -246,6 +248,9 @@ router.post("/auth/reset-password", resetPassword);
 // NEW — Phase 6: "Request Access" replaces open self-signup. Public
 // submission only; approval requires auth + manageUsers (below).
 router.post("/access-requests", createAccessRequest);
+
+// ── Public website module (no auth) ──
+router.use(publicRoutes);
 
 // Protected routes
 router.use(authMiddleware);
