@@ -11,7 +11,8 @@ export const roles = {
   PROCUREMENT: "Procurement & Stores",
   FLEET: "Fleet & Facilities",
   HSE: "HSE & Quality",
-  HR: "Human Resources"
+  HR: "Human Resources",
+  PUBLIC_PROSPECT: "Public Prospect"
 };
 
 export const permissions = {
@@ -118,7 +119,36 @@ export const permissions = {
   auditInternalWorkRequests: [roles.ADMIN],
   manageCommercialOwnership: [roles.ADMIN, roles.MANAGEMENT],
   // S-02: Maker-Checker bank change proposals. Only Admin can propose & decide.
-  manageBankChangeProposals: [roles.ADMIN]
+  manageBankChangeProposals: [roles.ADMIN],
+  // ── Procurement & Stores ──
+  createProcurementRequest: [roles.ADMIN, roles.PROCUREMENT, roles.OPERATIONS],
+  approveProcurementRequest: [roles.ADMIN, roles.MANAGEMENT, roles.PROCUREMENT],
+  manageSupplierPos: [roles.ADMIN, roles.PROCUREMENT],
+  receiveGoods: [roles.ADMIN, roles.PROCUREMENT],
+  issueFromStore: [roles.ADMIN, roles.PROCUREMENT, roles.OPERATIONS],
+  viewProcurement: [roles.ADMIN, roles.MANAGEMENT, roles.PROCUREMENT, roles.FINANCE],
+  manageThreeWayMatch: [roles.ADMIN, roles.PROCUREMENT, roles.FINANCE],
+  // ── Fleet & Facilities ──
+  manageVehicles: [roles.ADMIN, roles.FLEET],
+  dispatchVehicle: [roles.ADMIN, roles.FLEET, roles.OPERATIONS],
+  logFuel: [roles.ADMIN, roles.FLEET],
+  viewFleetDashboard: [roles.ADMIN, roles.MANAGEMENT, roles.FLEET],
+  manageFleetCompliance: [roles.ADMIN, roles.FLEET],
+  // ── HSE & Quality ──
+  managePpeChecklists: [roles.ADMIN, roles.HSE, roles.SUPERVISOR],
+  conductToolboxTalk: [roles.ADMIN, roles.HSE, roles.SUPERVISOR],
+  reportHseIncident: [roles.ADMIN, roles.HSE, roles.OPERATIONS, roles.SUPERVISOR],
+  viewHseDashboard: [roles.ADMIN, roles.MANAGEMENT, roles.HSE],
+  manageHseInspections: [roles.ADMIN, roles.HSE],
+  // ── Human Resources ──
+  manageArtisanQualifications: [roles.ADMIN, roles.HR],
+  manageMineSiteInductions: [roles.ADMIN, roles.HR, roles.HSE],
+  viewHrDashboard: [roles.ADMIN, roles.MANAGEMENT, roles.HR],
+  manageArtisanDispatchAllocations: [roles.ADMIN, roles.HR, roles.OPERATIONS],
+  // ── Public Prospect ──
+  submitPublicEnquiry: [roles.PUBLIC_PROSPECT],
+  viewPublicCatalog: [roles.PUBLIC_PROSPECT],
+  viewOwnEnquiryStatus: [roles.PUBLIC_PROSPECT]
 };
 
 // Timesheet workflow packet (contract steps 3-9). Every overlay is DARK: with its

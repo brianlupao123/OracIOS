@@ -63,7 +63,12 @@ function seedData() {
     { id: "u_ops", name: "Operations User", email: "ops@orac.co.zw", role: "Operations", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
     { id: "u_tech", name: "Technician User", email: "tech@orac.co.zw", role: "Technician", trade: "Fitter", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
     { id: "u_supervisor", name: "Supervisor User", email: "supervisor@orac.co.zw", role: "Supervisor", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
-    { id: "u_client", name: "Client Viewer", email: "client@orac.co.zw", role: "Client Viewer", is_active: true, client_id: "c_example_north", password_hash: DEFAULT_DEMO_PASSWORD_HASH }
+    { id: "u_client", name: "Client Viewer", email: "client@orac.co.zw", role: "Client Viewer", is_active: true, client_id: "c_example_north", password_hash: DEFAULT_DEMO_PASSWORD_HASH },
+    { id: "u_procurement", name: "Procurement User", email: "procurement@orac.co.zw", role: "Procurement & Stores", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
+    { id: "u_fleet", name: "Fleet User", email: "fleet@orac.co.zw", role: "Fleet & Facilities", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
+    { id: "u_hse", name: "HSE User", email: "hse@orac.co.zw", role: "HSE & Quality", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
+    { id: "u_hr", name: "HR User", email: "hr@orac.co.zw", role: "Human Resources", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
+    { id: "u_prospect", name: "Public Prospect", email: "prospect@orac.co.zw", role: "Public Prospect", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH }
   ];
 
   const clients = [

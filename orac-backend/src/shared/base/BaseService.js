@@ -6,8 +6,7 @@ import { NotFoundError } from "../errors/NotFoundError.js";
  * Extend this in domain services, overriding `entityName` and `storeName`
  * to get create / findById / findAll / update / softDelete / count for free.
  *
- * Uses the ORAC store pattern (store.get(storeName) returns Map-like object
- * or the store exposes a collection accessor).
+ * The ORAC store uses arrays for every collection (Decision D11).
  *
  * @example
  *   class VehicleService extends BaseService {
@@ -33,10 +32,10 @@ export class BaseService {
 
   /**
    * Retrieve the backing collection from the store.
-   * @returns {Map|object}
+   * @returns {Array}
    */
   _collection() {
-    return this.store[this.storeName] || new Map();
+    return this.store[this.storeName] || [];
   }
 
   /**
@@ -54,11 +53,7 @@ export class BaseService {
       updated_at: now,
     };
     const collection = this._collection();
-    if (collection instanceof Map) {
-      collection.set(id, entity);
-    } else if (Array.isArray(collection)) {
-      collection.push(entity);
-    }
+    collection.push(entity);
     return entity;
   }
 
@@ -69,12 +64,7 @@ export class BaseService {
    */
   findById(id) {
     const collection = this._collection();
-    let entity;
-    if (collection instanceof Map) {
-      entity = collection.get(id);
-    } else if (Array.isArray(collection)) {
-      entity = collection.find((e) => e.id === id);
-    }
+    const entity = collection.find((e) => e.id === id);
     if (!entity) {
       throw new NotFoundError(this.entityName, id);
     }
@@ -91,14 +81,7 @@ export class BaseService {
    */
   findAll(options = {}) {
     const collection = this._collection();
-    let items;
-    if (collection instanceof Map) {
-      items = Array.from(collection.values());
-    } else if (Array.isArray(collection)) {
-      items = [...collection];
-    } else {
-      items = [];
-    }
+    let items = [...collection];
 
     // Apply filter
     if (typeof options.filter === "function") {
@@ -147,14 +130,7 @@ export class BaseService {
    */
   count(filter) {
     const collection = this._collection();
-    let items;
-    if (collection instanceof Map) {
-      items = Array.from(collection.values());
-    } else if (Array.isArray(collection)) {
-      items = [...collection];
-    } else {
-      items = [];
-    }
+    let items = [...collection];
     items = items.filter((e) => !e.deleted_at);
     if (typeof filter === "function") {
       items = items.filter(filter);

@@ -14,6 +14,7 @@ import { persistenceMiddleware } from "./src/persistenceMiddleware.js";
 import { securityHeaders } from "./src/middleware/securityHeaders.js";
 import { createPublicEndpointLimits } from "./src/middleware/rateLimit.js";
 import { createCors } from "./src/middleware/cors.js";
+import { errorHandler } from "./src/middleware/errorHandler.js";
 
 const __dirname = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const publicDir = join(__dirname, "public");
@@ -71,13 +72,8 @@ app.use((req, res) => {
   res.sendFile(join(publicDir, "index.html"));
 });
 
-// Global error handler
-app.use((err, req, res, next) => {
-  const status = err.status || 500;
-  if (status >= 500) console.error(err);
-  const message = config.isProduction && status >= 500 ? "Internal server error." : (err.message || "Internal server error.");
-  res.status(status).json({ success: false, message });
-});
+// Global error handler (uses ORAC AppError hierarchy)
+app.use(errorHandler);
 
 export const server = app.listen(config.port, () => {
   console.log(`Orac-IOS running at http://localhost:${config.port}`);

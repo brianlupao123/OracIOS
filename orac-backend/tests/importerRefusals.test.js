@@ -32,7 +32,7 @@ const GOOD = `${H}Refusal Co,Mine,Pat Example,pat@example.test\nSecond Co,Mine,,
 test("every role except Admin and Management is refused (403) on every route, and nothing is created", () => {
   const f = fixture();
   const refused = Object.values(roles).filter((r) => r !== roles.ADMIN && r !== roles.MANAGEMENT);
-  assert.equal(refused.length, 10);
+  assert.equal(refused.length, 11);
   for (const role of refused) {
     for (const entity of ["clients", "catalog_items"]) {
       assert.equal(call(previewMasterDataImport(entity), f, `u_${role}`, { body: { csv_content: GOOD } }).status, 403, `${role} preview ${entity}`);
