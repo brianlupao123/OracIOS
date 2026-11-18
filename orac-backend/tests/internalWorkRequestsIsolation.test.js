@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { collectionGuards, getCollection } from "../src/controllers/coreController.js";
 import { permissions, roles } from "../src/permissions.js";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const routerSource = read("src/router.js");
 const controllerSource = read("src/controllers/internalWorkRequestsController.js");
 const rulesSource = read("src/internalWorkRequestRules.js");
 const response = () => ({ statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } });

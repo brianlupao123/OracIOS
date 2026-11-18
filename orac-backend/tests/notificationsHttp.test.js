@@ -4,6 +4,7 @@ import express from "express";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import { authMiddleware, generateToken } from "../src/middleware/auth.js";
 import { persistenceMiddleware } from "../src/persistenceMiddleware.js";
@@ -232,7 +233,7 @@ test("a failure while generating a notification does not undo the committed busi
 });
 
 test("router.js registers the same routes behind authMiddleware (source-text check; router cannot be imported on this baseline)", () => {
-  const source = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const source = routerSource.replace(/\r\n/g, "\n");
   const authAt = source.indexOf("router.use(authMiddleware);");
   assert.ok(authAt > 0);
   assert.ok(source.indexOf('router.post("/access-requests", createAccessRequest);') < authAt, "public create stays before auth");

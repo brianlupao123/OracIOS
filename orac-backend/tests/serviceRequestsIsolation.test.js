@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { collectionGuards, getCollection } from "../src/controllers/coreController.js";
 import { permissions, roles } from "../src/permissions.js";
 import { normalizeDb } from "../src/store.js";
+import { routerSource as _routerSourceRaw, authAt } from "./helpers/routerSourceHelper.js";
 
-const routerSource = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const routerSource = _routerSourceRaw.replace(/\r\n/g, "\n");
 
 function response() {
   return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } };

@@ -23,7 +23,20 @@ test("legacy adapter: Daily Time Sheets, Contractor Logs and no-breakdown Timesh
 });
 
 test("legacy creation gate: new Daily Time Sheets and Contractor Logs are refused by default and can be reopened by the rollback switch", async () => {
-  const gate = apiRouter.stack.filter((l) => l.route && ["/daily_timesheets", "/contractor_log_sheets"].includes(l.route.path) && l.route.methods.post);
+  // With modular routing, routes may be nested inside sub-routers via router.use().
+  // Walk the Express router stack recursively to find the flat routes.
+  function findRoutes(router, paths) {
+    const found = [];
+    for (const layer of router.stack || []) {
+      if (layer.route && paths.includes(layer.route.path) && layer.route.methods.post) {
+        found.push(layer);
+      } else if (layer.handle && layer.handle.stack) {
+        found.push(...findRoutes(layer.handle, paths));
+      }
+    }
+    return found;
+  }
+  const gate = findRoutes(apiRouter, ["/daily_timesheets", "/contractor_log_sheets"]);
   assert.equal(gate.length, 2);
   for (const layer of gate) {
     assert.equal(layer.route.stack.length >= 3, true, "gate + validation + handler");

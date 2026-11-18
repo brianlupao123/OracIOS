@@ -13,6 +13,7 @@ import { validate } from "../src/middleware/validate.js";
 import { hasPermission } from "../src/permissions.js";
 import { normalizeDb } from "../src/store.js";
 import { makeDb, makeRes, req, row, addDaily, addTimesheet, baseBody } from "./helpers/worksheetRegisterFixture.js";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 const FORBIDDEN_KEYS = new Set(["hourly_rate", "rate", "rates", "amount", "total_amount", "cost", "total_cost", "unit_price", "price"]);
 function moneyKeys(value, found = []) {
@@ -370,7 +371,7 @@ test("a data file saved before this feature gains an empty worksheet_registers c
 });
 
 test("routes: explicit, authenticated, outside the generic collection list; Daily Time Sheet and Contractor Log routes are untouched", () => {
-  const src = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").replace(/\r/g, "");
+  const src = routerSource;
   const authAt = src.indexOf("router.use(authMiddleware);");
   for (const frag of [
     'router.get("/worksheet_registers"', 'router.post("/worksheet_registers"', 'router.get("/worksheet_registers/:id"', 'router.patch("/worksheet_registers/:id"',

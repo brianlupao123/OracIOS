@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import { getCollection, deactivateEntity, collectionGuards } from "../src/controllers/coreController.js";
 import { roles } from "../src/permissions.js";
 import { makeReq, makeRes } from "./_http.js";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
-const routerSrc = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").replace(/\r/g, "");
+const routerSrc = routerSource;
 const collections = JSON.parse(
   routerSrc.match(/const collections = (\[[\s\S]*?\]);/)[1].replace(/\s+/g, " ")
 );

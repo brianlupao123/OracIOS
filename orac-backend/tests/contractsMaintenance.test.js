@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import * as contractsController from "../src/controllers/contractsController.js";
 import { normalizeDb } from "../src/store.js";
@@ -693,7 +694,7 @@ test("the controller exposes no delete operation", () => {
 });
 
 test("router wires six explicit protected routes and no delete or generic collection route", () => {
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   const authAt = router.indexOf("router.use(authMiddleware)");
   assert.ok(authAt > 0);
 

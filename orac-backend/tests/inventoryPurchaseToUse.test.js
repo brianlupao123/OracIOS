@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import {
   recordStockMovement, createStockItem, getStockMovements, getStockItemMovements,
@@ -398,7 +399,7 @@ test("inactive inventory users are refused, and Management may read but its over
 
 // ── Source-level guards ──────────────────────────────────────────────────────
 test("the reconciliation route is wired, read-only, and no route edits or deletes a movement", () => {
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   assert.match(router, /router\.get\("\/inventory\/reconciliation", getInventoryReconciliation\)/);
   assert.doesNotMatch(router, /router\.(patch|put|delete)\("\/inventory\/(movements|reconciliation)/);
 });

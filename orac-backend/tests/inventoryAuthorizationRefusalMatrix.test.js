@@ -4,6 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import * as inventory from "../src/controllers/inventoryController.js";
 import { permissions } from "../src/permissions.js";
@@ -226,7 +227,7 @@ test("immutable ledger (behavioural): reading movements never changes them, and 
 test("immutable ledger (source): the controller exports no movement edit/delete handler, and the router exposes movements only through POST create and GET reads", () => {
   const names = Object.keys(inventory);
   assert.ok(!names.some((n) => /(update|edit|delete|remove|void|cancel)\w*Movement|Movement\w*(Update|Edit|Delete|Remove)/i.test(n)), names.join(", "));
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   const routeLines = router.split("\n").filter((line) => /router\.(get|post|put|patch|delete)\(\s*["'`]\/inventory\/(movements|stock_items\/:id\/movements)/.test(line));
   assert.ok(routeLines.length >= 3, "expected the known movement routes to be found");
   for (const line of routeLines) assert.ok(/router\.(get|post)\(/.test(line), `unexpected method on a movement route: ${line.trim()}`);
@@ -294,7 +295,7 @@ test("VERIFIED: generic deactivate/reactivate routes return 405 Method Not Allow
 });
 
 test("router source: the generic collections list includes stock_movements, so the generic loop must be checked (documented, not asserted)", () => {
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   assert.match(router, /"stock_movements"/);
   assert.match(router, /router\.post\(`\/admin\/\$\{collection\}\/:id\/deactivate`/);
 });

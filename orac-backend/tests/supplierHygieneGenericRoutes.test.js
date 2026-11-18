@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import { deactivateEntity, reactivateEntity, getCollection } from "../src/controllers/coreController.js";
 import { recordStockMovement, getStockMovements, getStockItemMovements, getLowStockReport, createSupplier, updateSupplier } from "../src/controllers/inventoryController.js";
@@ -60,7 +61,7 @@ const archive = (world, id, role = "Admin") => run(deactivate, world, idOf(role)
 const restore = (world, id, role = "Admin") => run(reactivate, world, idOf(role), { params: { id } }).res;
 
 test("wiring (source): suppliers are in the generic collections list and get deactivate/reactivate from the shared loop; no supplier-specific archive route exists", () => {
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   const list = router.slice(router.indexOf("const collections = ["), router.indexOf("];", router.indexOf("const collections = [")));
   assert.match(list, /"suppliers"/);
   assert.match(router, /router\.post\(`\/admin\/\$\{collection\}\/:id\/deactivate`, deactivateEntity\(collection\)\)/);

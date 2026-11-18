@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { routerSource, authAt } from "./helpers/routerSourceHelper.js";
 
 import { recordStockMovement, issueDirectSaleStock, getStockMovements, getStockItemMovements, createStockItem, updateStockItem, createSupplier, updateSupplier } from "../src/controllers/inventoryController.js";
 
@@ -472,7 +473,7 @@ test("quantity_on_hand is mutated in exactly one place in backend source (applyS
 
 test("router and schemas wire the direct-sale endpoint and expose no edit/delete route for movements", async () => {
   const { readFileSync } = await import("node:fs");
-  const router = readFileSync(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   const schemas = readFileSync(new URL("../src/schemas.js", import.meta.url), "utf8");
   assert.match(router, /router\.post\("\/inventory\/movements\/direct-sale", validate\(DirectSaleStockIssueSchema\), issueDirectSaleStock\)/);
   assert.match(router, /router\.get\("\/inventory\/movements", getStockMovements\)/);

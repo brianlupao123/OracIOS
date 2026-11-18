@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { routerSource } from "./helpers/routerSourceHelper.js";
 
 import { createInvoiceCreditNote, getInvoiceSettlement, issueInvoiceCreditNote, recordInvoicePayment, voidInvoicePayment } from "../src/controllers/invoiceSettlementController.js";
 import { CreateInvoiceCreditNoteSchema, IssueInvoiceCreditNoteSchema, RecordInvoicePaymentSchema, VoidInvoicePaymentSchema } from "../src/schemas.js";
@@ -164,7 +164,7 @@ test("settlement routes are authenticated, validated, idempotent on record, and 
   assert.equal(CreateInvoiceCreditNoteSchema.safeParse({ amount: 0, reason: "Correction" }).success, false);
   assert.equal(IssueInvoiceCreditNoteSchema.safeParse({ idempotency_key: "issue-123" }).success, true);
 
-  const router = await readFile(new URL("../src/router.js", import.meta.url), "utf8");
+  const router = routerSource;
   assert.match(router, /router\.post\("\/invoices\/:id\/payments", idempotencyKeyMiddleware, validate\(RecordInvoicePaymentSchema\), recordInvoicePayment\)/);
   assert.match(router, /router\.post\("\/invoices\/:id\/payments\/:paymentId\/void", validate\(VoidInvoicePaymentSchema\), voidInvoicePayment\)/);
   assert.match(router, /router\.post\("\/invoices\/:id\/credit-notes", idempotencyKeyMiddleware, validate\(CreateInvoiceCreditNoteSchema\), createInvoiceCreditNote\)/);
