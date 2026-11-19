@@ -247,7 +247,15 @@ export function applyStockChange({
   if (!db.stock_movements) db.stock_movements = [];
   db.stock_movements.push(movement);
 
-  return { ok: true, movement, before, stockItem };
+  const rollback = () => {
+    Object.assign(stockItem, { quantity_on_hand: quantityBefore });
+    if (db && Array.isArray(db.stock_movements)) {
+      const idx = db.stock_movements.indexOf(movement);
+      if (idx !== -1) db.stock_movements.splice(idx, 1);
+    }
+  };
+
+  return { ok: true, movement, before, stockItem, rollback };
 }
 
 /** Adds read-only display fields (item identity, actor name) for listing

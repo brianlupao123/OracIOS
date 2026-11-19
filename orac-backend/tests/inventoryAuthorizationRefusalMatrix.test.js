@@ -271,7 +271,7 @@ test("reconciliation is read-only and stays clean after receipts, adjustments an
 
 // ── Findings kept visible without failing the run ────────────────────────────
 
-test("FINDING: if the audit hook throws AFTER posting, stock and movement are already changed (no rollback)", { todo: "Expected behaviour is undecided. Today recordStockMovement posts via applyStockChange and only then calls store.audit, so an audit failure leaves an unaudited movement. Owner/Antigravity to decide whether to fix; this test is a todo so it does not fail the suite." }, () => {
+test("VERIFIED: if the audit hook throws AFTER posting, stock and movement are rolled back cleanly (no unaudited movement)", () => {
   const world = createWorld();
   world.store.audit = () => { throw new Error("audit down"); };
   assert.throws(() => recordStockMovement(request(world, idOf("Operations"), { body: receiptBody() }), createResponse()), /audit down/);

@@ -222,7 +222,14 @@ export const recordStockMovement = (req, res) => {
 
   if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
 
-  req.store.audit(req.db, actor, "stock_movement", result.movement.id, "STOCK_MOVEMENT_RECORDED", result.before, { ...result.stockItem, movement: publicMovement(result.movement) });
+  try {
+    req.store.audit(req.db, actor, "stock_movement", result.movement.id, "STOCK_MOVEMENT_RECORDED", result.before, { ...result.stockItem, movement: publicMovement(result.movement) });
+  } catch (err) {
+    if (typeof result.rollback === "function") {
+      result.rollback();
+    }
+    throw err;
+  }
   res.json({ success: true, data: { movement: publicMovement(result.movement), stock_item: result.stockItem } });
 };
 
@@ -269,7 +276,14 @@ export const issueDirectSaleStock = (req, res) => {
 
   if (!result.ok) return res.status(result.status).json({ success: false, message: result.message });
 
-  req.store.audit(req.db, actor, "stock_movement", result.movement.id, "DIRECT_SALE_STOCK_ISSUED", result.before, { ...result.stockItem, movement: result.movement });
+  try {
+    req.store.audit(req.db, actor, "stock_movement", result.movement.id, "DIRECT_SALE_STOCK_ISSUED", result.before, { ...result.stockItem, movement: result.movement });
+  } catch (err) {
+    if (typeof result.rollback === "function") {
+      result.rollback();
+    }
+    throw err;
+  }
   res.json({ success: true, data: { movement: result.movement, stock_item: result.stockItem } });
 };
 

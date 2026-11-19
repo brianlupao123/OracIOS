@@ -194,6 +194,7 @@ test("exportPastel (invoices review): audits exact SHA-256 byte digest and accou
   const downloadedBytes = res.body;
   const expectedHash = crypto.createHash("sha256").update(downloadedBytes).digest("hex");
 
+  assert.ok(downloadedBytes.startsWith("# [PASTEL PARALLEL MODE — REVIEW ONLY / NOT POSTED]"), "CSV bytes must carry non-posting review banner");
   assert.equal(audits.length, 1);
   const auditEntry = audits[0];
   assert.equal(auditEntry[4], "PASTEL_EXPORT_GENERATED");

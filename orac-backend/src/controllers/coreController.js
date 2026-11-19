@@ -403,9 +403,10 @@ export const getSummary = (req, res) => {
 export const exportPastel = (req, res) => {
   const actor = getActor(req);
   requirePermission(actor, "exportPastel");
-  const csv = exportInvoicesCsv(req.db);
+  const rawCsv = exportInvoicesCsv(req.db);
+  const csv = `# [PASTEL PARALLEL MODE — REVIEW ONLY / NOT POSTED]\n${rawCsv}`;
   const sha256 = hashCsv(csv);
-  const rowCount = Math.max(0, csv.split("\n").filter(Boolean).length - 1);
+  const rowCount = Math.max(0, rawCsv.split("\n").filter(Boolean).length - 1);
   req.store.audit(req.db, actor, "pastel_export", "invoices", "PASTEL_EXPORT_GENERATED", null, {
     export_type: "invoices",
     accounting_posted: false,
