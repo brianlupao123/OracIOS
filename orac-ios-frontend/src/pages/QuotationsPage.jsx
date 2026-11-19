@@ -3,6 +3,7 @@ import { admin, assistant, collections, documents, quotes as quotesApi } from ".
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import Modal from "../components/Modal.jsx";
 import RecordAnalysisModal from "../components/RecordAnalysisModal.jsx";
+import EmailPreviewModal from "../components/EmailPreviewModal.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { ICONS } from "../components/icons.jsx";
 import { ErrorBanner, PageEmptyState, PageLoadingSkeleton } from "../components/PageStates.jsx";
@@ -85,6 +86,7 @@ export default function QuotationsPage({ user }) {
   const [approvalExceptionReason, setApprovalExceptionReason] = useState("");
   const [approvalExceptionError, setApprovalExceptionError] = useState("");
   const [filterMode, setFilterMode] = useState("all");
+  const [emailPreviewQuote, setEmailPreviewQuote] = useState(null);
   const isManagement = user?.role === "Management";
   const v5Visible = v5CommercialEnabled() && ["Sales", "Admin"].includes(user.role);
   const analysisVisible = recordAnalysisVisible();
@@ -287,6 +289,14 @@ export default function QuotationsPage({ user }) {
   }
 
   async function sendQuote(quote) {
+    // Open the dry-run email preview modal instead of immediately transitioning
+    setEmailPreviewQuote(quote);
+  }
+
+  async function confirmSendQuote() {
+    const quote = emailPreviewQuote;
+    if (!quote) return;
+    setEmailPreviewQuote(null);
     setBusyId(quote.id);
     setError("");
     setNotice("");
@@ -856,6 +866,31 @@ export default function QuotationsPage({ user }) {
           <div className="flex justify-end gap-2"><button type="button" onClick={() => setAcceptanceQuote(null)} className={`${buttonClass} border-gray-300 text-orac-slate hover:bg-gray-50`}>Cancel</button><button type="submit" disabled={saving} className={`${buttonClass} border-orac-blue bg-orac-blue text-white hover:brightness-105`}>{saving ? "Saving..." : "Record acceptance"}</button></div>
         </form>
       </Modal>
+
+      <EmailPreviewModal
+        isOpen={Boolean(emailPreviewQuote)}
+        onClose={() => setEmailPreviewQuote(null)}
+        recipient={emailPreviewQuote ? (clients.find((c) => c.id === emailPreviewQuote.client_id)?.email || clients.find((c) => c.id === emailPreviewQuote.client_id)?.contact_email || "No client email on file") : ""}
+        subject={emailPreviewQuote ? `ORAC Quotation ${emailPreviewQuote.quote_number || emailPreviewQuote.id} — ${clientName(emailPreviewQuote.client_id)}` : ""}
+        bodyText={emailPreviewQuote ? [
+          `Dear ${clientName(emailPreviewQuote.client_id)},`,
+          "",
+          `Please find attached Quotation ${emailPreviewQuote.quote_number || emailPreviewQuote.id} for your review.`,
+          "",
+          emailPreviewQuote.scope_summary ? `Scope: ${emailPreviewQuote.scope_summary}` : "",
+          `Validity: ${emailPreviewQuote.validity_days || 30} days from issue date.`,
+          "",
+          "Should you have any queries or require further clarification, please do not hesitate to contact us.",
+          "",
+          "Kind regards,",
+          "ORAC Systems (Pvt) Ltd",
+          "Industrial Equipment Solutions"
+        ].filter(Boolean).join("\n") : ""}
+        referenceId={emailPreviewQuote?.quote_number || emailPreviewQuote?.id || ""}
+        docType="Quotation"
+        onConfirmSend={confirmSendQuote}
+        confirmLabel="📋 Copy to Clipboard & Mark as Sent"
+      />
     </div>
   );
 }

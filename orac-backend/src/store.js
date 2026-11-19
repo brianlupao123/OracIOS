@@ -276,6 +276,10 @@ export const SCHEMA_COLLECTIONS = [
   "vehicles", "vehicle_dispatches", "vehicle_fuel_logs",
   "pre_dispatch_ppe_checklists", "toolbox_talks", "hse_incident_reports",
   "artisan_qualifications", "mine_site_inductions", "artisan_dispatch_allocations",
+  "artisan_documents", "bank_change_proposals", "reorder_alerts",
+  "communication_queue", "communication_evidence", "survey_bookings",
+  "leave_requests", "maintenance_requests", "odometer_readings", "quality_inspections",
+  "jsa_records", "client_prs",
   "virtual_technical_surveys", "client_job_feedbacks", "qr_optical_tokens",
   "iot_sensor_telemetries", "iot_threshold_alerts", "offline_sync_journal"
 ];

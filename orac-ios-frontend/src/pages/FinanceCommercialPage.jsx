@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { assistant, collections, purchaseOrders as poApi, quotes as quotesApi, reports } from "../api/client.js";
+import { ROLES } from "../accessPolicy.js";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { ICONS } from "../components/icons.jsx";
@@ -11,6 +12,8 @@ import V5BillingReadinessPanel from "../components/V5BillingReadinessPanel.jsx";
 import V5InvoiceWriterPanel from "../components/V5InvoiceWriterPanel.jsx";
 import LegacyInvoiceDraftPanel from "../components/LegacyInvoiceDraftPanel.jsx";
 import InvoiceSettlementPanel from "../components/InvoiceSettlementPanel.jsx";
+import BankChangeProposalsPanel from "../components/BankChangeProposalsPanel.jsx";
+import PastelParallelReviewPanel from "../components/PastelParallelReviewPanel.jsx";
 import {
   EMPTY_AMENDMENT_FORM, EMPTY_VERIFY_FORM, buildAmendmentPayload, buildVerifyPoPayload, canApproveAmendment,
   canVerifyPo, shouldTransitionAfterVerify, validateAmendmentForm, validateVerifyPoForm
@@ -59,6 +62,8 @@ export default function FinanceCommercialPage({ user }) {
   const [clients, setClients] = useState([]);
   const [ready, setReady] = useState([]);
   const [invoiceList, setInvoiceList] = useState([]);
+  const [bankProposals, setBankProposals] = useState([]);
+  const isAdmin = user?.role === ROLES.ADMIN;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -88,6 +93,13 @@ export default function FinanceCommercialPage({ user }) {
       setClients(Array.isArray(clientData) ? clientData : []);
       setReady(Array.isArray(readyData) ? readyData : []);
       setInvoiceList(Array.isArray(invoiceData) ? invoiceData : []);
+      // Fetch bank change proposals for Admin users (S-02 Maker-Checker)
+      if (user?.role === ROLES.ADMIN) {
+        try {
+          const bpData = await collections.list("bank-change-proposals");
+          setBankProposals(Array.isArray(bpData) ? bpData : []);
+        } catch { setBankProposals([]); }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -304,48 +316,19 @@ export default function FinanceCommercialPage({ user }) {
             {invoiceList.length === 0 ? <PageEmptyState iconPath={ICONS.money} title="No issued invoices" subtitle="Issued invoices will appear here for controlled payment settlement." /> : <div className="mt-3 space-y-3">{invoiceList.map((invoice) => <InvoiceSettlementPanel key={invoice.id} invoice={invoice} user={user} onChanged={load} />)}</div>}
           </section>
 
-          <section className="rounded-xl border border-orac-border bg-orac-surface p-4 shadow-sm sm:p-5">
-            <h2 className="text-base font-semibold text-orac-text-primary">Accounting review files</h2>
-            <p className="mt-1 text-ux-secondary text-orac-text-secondary">Export structured review files formatted for external accounting and audit inspection.</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-orac-border bg-orac-surface-muted p-3.5 flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ux-body text-orac-text-primary">Invoices</div>
-                  <div className="text-ux-caption text-orac-text-muted">All invoices and credit notes, one row per invoice line</div>
-                </div>
-                <Link to="/reports" className="text-ux-secondary font-semibold text-orac-accent hover:underline">
-                  View
-                </Link>
-              </div>
-              <div className="rounded-lg border border-orac-border bg-orac-surface-muted p-3.5 flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ux-body text-orac-text-primary">Quotes</div>
-                  <div className="text-ux-caption text-orac-text-muted">Quotes for accounting review</div>
-                </div>
-                <Link to="/quotations" className="text-ux-secondary font-semibold text-orac-accent hover:underline">
-                  View
-                </Link>
-              </div>
-              <div className="rounded-lg border border-orac-border bg-orac-surface-muted p-3.5 flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ux-body text-orac-text-primary">Invoice-ready work</div>
-                  <div className="text-ux-caption text-orac-text-muted">Approved work that can be invoiced</div>
-                </div>
-                <Link to="/invoice-readiness" className="text-ux-secondary font-semibold text-orac-accent hover:underline">
-                  View
-                </Link>
-              </div>
-              <div className="rounded-lg border border-orac-border bg-orac-surface-muted p-3.5 flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-ux-body text-orac-text-primary">Technician payroll</div>
-                  <div className="text-ux-caption text-orac-text-muted">Certified hours only, by month. No rates or amounts</div>
-                </div>
-                <Link to="/operational-data" className="text-ux-secondary font-semibold text-orac-accent hover:underline">
-                  View
-                </Link>
-              </div>
-            </div>
-          </section>
+          {/* S-02: Maker-Checker Bank & EcoCash Change Proposals (Admin only) */}
+          {isAdmin && (
+            <BankChangeProposalsPanel
+              proposals={bankProposals}
+              user={user}
+              onReload={load}
+              setNotice={setNotice}
+              setError={setError}
+            />
+          )}
+
+          {/* GAP 5: Sage Pastel Parallel Mode Review & Non-Posting Exports */}
+          <PastelParallelReviewPanel invoices={invoiceList} user={user} />
         </>
       )}
       <RecordAnalysisModal title="Purchase order evidence analysis" analysis={analysis} onClose={() => setAnalysis(null)} />

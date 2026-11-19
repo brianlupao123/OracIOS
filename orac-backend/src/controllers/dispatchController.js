@@ -11,6 +11,7 @@ import { v5Enabled } from "../v5CommercialWorkflow.js";
 import { v5SupervisorAssignmentRefusal } from "../v5SignatureEvidence.js";
 import { calculatePurchaseOrderEvidenceValue } from "../store.js";
 import { invoiceReadinessBlock, invoiceReadinessSummary } from "../invoiceReadiness.js";
+import { checkMineInductionGate } from "../services/expiryWatcherService.js";
 import { isDispatchInSalesPortfolio } from "./coreController.js";
 import {
   PAPER_SOURCE, paperEntryCreateRefusal, stampPaperEntry, salesOwnPaperEntryRefusal, paperEntryUpdateRefusal, applyPaperEntryUpdate
@@ -137,9 +138,65 @@ export const getDispatchJobCard = (req, res) => {
   const roster = (req.db.users || []).filter((item) => assignedTechnicianIds.has(item.id) && item.role === roles.TECHNICIAN && item.is_active !== false);
   const invoiceBlock = invoiceReadinessBlock(req.db, job);
 
+  // S-10 Mine Induction Gate
+  const mineSite = job.mine_site || quote?.mine_site || quote?.site_location || job.site_id || "";
+  const inductions = req.db.mine_site_inductions || [];
+  const inductionChecks = roster.map((tech) => {
+    if (!mineSite) return { technician_id: tech.id, technician_name: tech.name, status: "NOT_APPLICABLE", message: "No mine site specified" };
+    const check = checkMineInductionGate(inductions, tech.id, mineSite, job.scheduled_start || new Date().toISOString());
+    return {
+      technician_id: tech.id,
+      technician_name: tech.name,
+      allowed: check.allowed,
+      code: check.code,
+      message: check.reason,
+      status: check.allowed ? "PASSED" : "BLOCKED"
+    };
+  });
+  const inductionOverall = inductionChecks.length === 0 ? "NO_ROSTER" : inductionChecks.every((c) => c.status === "PASSED" || c.status === "NOT_APPLICABLE") ? "PASSED" : "BLOCKED";
+
+  // S-11 Pre-Dispatch PPE Checklist
+  const ppeList = (req.db.pre_dispatch_ppe_checklists || []).filter((item) => item.dispatch_card_id === job.id);
+  const passedPpe = ppeList.find((item) => item.status === "PASSED");
+
+  // S-12 Vehicle VID Roadworthiness Gate
+  const vehicleTrips = (req.db.vehicle_dispatches || []).filter((item) => item.dispatch_card_id === job.id);
+  const activeTrip = vehicleTrips.find((t) => t.status === "ACTIVE") || vehicleTrips[vehicleTrips.length - 1];
+  let vehicleGate = { status: "NOT_ASSIGNED", message: "No vehicle assigned to dispatch" };
+  if (activeTrip) {
+    const veh = (req.db.vehicles || []).find((v) => v.id === activeTrip.vehicle_id);
+    const today = new Date().toISOString().slice(0, 10);
+    if (veh) {
+      const vidExpired = veh.vid_expiry_date && veh.vid_expiry_date < today;
+      vehicleGate = {
+        status: vidExpired ? "VID_EXPIRED" : "PASSED",
+        plate_number: veh.plate_number,
+        vid_expiry_date: veh.vid_expiry_date || null,
+        trip_number: activeTrip.trip_number
+      };
+    }
+  }
+
   res.json({
     success: true,
     data: {
+      safety_gates: {
+        mine_induction: {
+          site_name: mineSite || "Unspecified",
+          status: inductionOverall,
+          checks: inductionChecks
+        },
+        ppe_checklist: {
+          status: passedPpe ? "PASSED" : "PENDING_SIGN_OFF",
+          checklist_number: passedPpe?.checklist_number || null,
+          inspected_at: passedPpe?.inspected_at || null
+        },
+        vehicle_vid: {
+          status: vehicleGate.status,
+          plate_number: vehicleGate.plate_number || null,
+          vid_expiry_date: vehicleGate.vid_expiry_date || null
+        }
+      },
       identity: {
         id: job.id,
         dispatch_number: job.dispatch_number || null,

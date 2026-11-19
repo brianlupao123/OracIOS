@@ -43,7 +43,7 @@ export default function ForgotPassword() {
                   Reset Link Requested
                 </div>
                 <p className="mt-3 text-sm text-orac-text-secondary leading-relaxed">
-                  If that email belongs to an active account, a reset link has been dispatched. For the pilot environment, if you do not receive it promptly, please contact an administrator to retrieve your link.
+                  If that email belongs to an active account, a reset link has been dispatched. For the pilot environment, automated outbound email dispatch is restricted; please contact your System Administrator (admin@orac.co.zw) to retrieve your verified one-time reset link.
                 </p>
                 <Link
                   to="/login"

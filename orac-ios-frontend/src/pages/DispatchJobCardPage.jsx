@@ -9,6 +9,7 @@ import RecordAnalysisModal from "../components/RecordAnalysisModal.jsx";
 import { ICONS } from "../components/icons.jsx";
 import { recordAnalysisVisible } from "../recordAnalysisFlags.js";
 import LegacyInvoiceDraftPanel from "../components/LegacyInvoiceDraftPanel.jsx";
+import DispatchSafetyGatesCard from "../components/DispatchSafetyGatesCard.jsx";
 
 const timesheetLabels = [
   ["draft", "Draft"],
@@ -98,6 +99,9 @@ export default function DispatchJobCardPage({ user }) {
         <div><dt className="text-xs font-medium text-slate-500">PO status</dt><dd className="mt-1 text-sm text-slate-700 dark:text-slate-300">{workflow.purchase_order?.status || "Not available"}</dd></div>
       </dl>
     </section>
+
+    {/* Controls S-10, S-11, S-12: Mining Safety & Pre-Dispatch Statutory Compliance */}
+    <DispatchSafetyGatesCard safetyGates={card.safety_gates} />
 
     <section aria-labelledby="job-card-evidence" className="border-y border-slate-200 bg-white px-5 py-5 dark:border-slate-800 dark:bg-slate-900">
       <h2 id="job-card-evidence" className="text-base font-semibold text-orac-slate dark:text-white">Evidence summary</h2>

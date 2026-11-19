@@ -15,6 +15,8 @@ import { securityHeaders } from "./src/middleware/securityHeaders.js";
 import { createPublicEndpointLimits } from "./src/middleware/rateLimit.js";
 import { createCors } from "./src/middleware/cors.js";
 import { errorHandler } from "./src/middleware/errorHandler.js";
+import { scanAndGenerateAlerts } from "./src/services/reorderAlertService.js";
+import { evaluateArtisanVault } from "./src/services/expiryWatcherService.js";
 
 const __dirname = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const publicDir = join(__dirname, "public");
@@ -78,3 +80,31 @@ app.use(errorHandler);
 export const server = app.listen(config.port, () => {
   console.log(`Orac-IOS running at http://localhost:${config.port}`);
 });
+
+// Background Worker: Daily statutory compliance & inventory reorder audit (GAP 9)
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+async function runDailySystemAudit() {
+  if (process.env.NODE_ENV === "test") return;
+  try {
+    const { db, release } = await store.read({ lock: true });
+    try {
+      scanAndGenerateAlerts({ store, db });
+      evaluateArtisanVault(db.artisan_qualifications || [], db.mine_site_inductions || []);
+      await store.write(db, release);
+      console.log("[SYSTEM] Daily statutory compliance & inventory audit completed.");
+    } catch (innerErr) {
+      if (release) await store.release(release);
+      throw innerErr;
+    }
+  } catch (err) {
+    console.error("[SYSTEM ERROR] Automated audit failed:", err.message);
+  }
+}
+
+if (process.env.NODE_ENV !== "test") {
+  const auditTimer = setTimeout(runDailySystemAudit, 10000);
+  const auditInterval = setInterval(runDailySystemAudit, TWENTY_FOUR_HOURS_MS);
+  if (auditTimer.unref) auditTimer.unref();
+  if (auditInterval.unref) auditInterval.unref();
+}

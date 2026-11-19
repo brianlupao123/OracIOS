@@ -753,6 +753,9 @@ export const operationalData = {
   analytics(from, to) {
     return request(`/analytics/operational?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
   },
+  exportPastel() {
+    return downloadCsv("/exports/pastel.csv");
+  },
   exportPastelReviewQuotes() {
     return downloadCsv("/exports/pastel-review/quotes.csv");
   },
@@ -762,7 +765,7 @@ export const operationalData = {
 };
 
 export const documents = {
-  download(type, id) {
+  download(type, id, { password } = {}) {
     const paths = {
       quotes: `/documents/quotes/${id}.pdf`,
       dispatch_cards: `/documents/job-cards/${id}.pdf`,
@@ -771,7 +774,8 @@ export const documents = {
       purchase_orders: `/documents/purchase-orders/${id}.pdf`
     };
     if (!paths[type]) throw new Error("Unsupported document type.");
-    return downloadFile(paths[type], `${type}-${id}.pdf`);
+    const url = password ? `${paths[type]}?password=${encodeURIComponent(password)}` : paths[type];
+    return downloadFile(url, `${type}-${id}${password ? "-protected" : ""}.pdf`);
   },
   // Admin/Operations client period pack. Filters: client (required), from/to
   // (required), plus optional site, technician, task (dispatch) and kiosk time.
