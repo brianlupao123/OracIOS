@@ -1,8 +1,8 @@
 # ORAC MASTER MEMORY & SINGLE SOURCE OF TRUTH
 
 > **Document Purpose:** This is the DEFINITIVE reference for the entire ORAC ERP project. Every decision, file path, role, configuration, gap, and agreement is recorded here. No other document overrides this one.
-> **Last Updated:** 2026-11-18T08:01 CAT (Africa/Harare, UTC+2)
-> **Status:** DISCUSSION PHASE — Brian must approve before implementation begins.
+> **Last Updated:** 2026-11-18T11:34 CAT (Africa/Harare, UTC+2)
+> **Status:** ✅ APPROVED — Unified Monorepo + Full Architecture locked by Brian on 18 Nov 2026.
 > **Owner:** Brian Lupao (System Owner) + Antigravity (Engineering Agent)
 
 ---
@@ -27,22 +27,36 @@
 
 ## 1. SYSTEM MAP: ALL FILE LOCATIONS {#1-system-map}
 
-### Active Codebases (The 2 Apps We Build)
+### Unified Monorepo (Decision D18 — Agreed 18 Nov 2026)
 
-| System | Path | Purpose | Tech Stack |
-|--------|------|---------|------------|
-| **Backend API** | `C:\Users\BRIAN LUPAO\Desktop\ffims-asset-register\two-concept-packet-backend-20261005-235259` | Authoritative ORAC-IOS ERP Backend | Node.js, Express, ESM, Zod, bcrypt, pg, jsonwebtoken |
-| **Frontend Portal** | `D:\Projects\ORAC-WORKSPACE\2-portal-frontend\orac-ios-frontend` | Operations Portal (Vite + React 18 SPA) | React 18, React Router 6, Vite, Tailwind CSS |
+> [!IMPORTANT]
+> ORAC is a **single Git repository (Monorepo)**. The root directory is `orac-ios/`.
+> Backend and Frontend are sibling directories inside the monorepo.
+
+**Target Root:** `orac-ios/` (to be established in Phase 0)
+
+| Folder | Purpose | Tech Stack |
+|--------|---------|------------|
+| `orac-ios/orac-backend/` | Authoritative ORAC-IOS ERP Backend | Node.js, Express, ESM, Zod, bcrypt, pg, jsonwebtoken |
+| `orac-ios/orac-ios-frontend/` | Operations Portal (Vite + React 18 SPA) | React 18, React Router 6, Vite, Tailwind CSS |
+| `orac-ios/docs/` | Root-level system documentation | MASTER_MEMORY.md, ARCHITECTURE.md, API_CONTRACTS.md |
+| `orac-ios/docker-compose.yml` | One-command dev environment | Postgres + Backend + Frontend |
+
+### Current Physical Locations (Pre-Consolidation)
+
+| System | Current Path | Destination |
+|--------|-------------|-------------|
+| **Backend API** | `C:\Users\BRIAN LUPAO\Desktop\ffims-asset-register\two-concept-packet-backend-20261005-235259` | → `orac-ios/orac-backend/` |
+| **Frontend Portal** | `D:\Projects\ORAC-WORKSPACE\2-portal-frontend\orac-ios-frontend` | → `orac-ios/orac-ios-frontend/` |
 
 ### Reference & Prototype Systems (NOT Production)
 
 | System | Path | Purpose | Fate |
 |--------|------|---------|------|
-| **Public Web Prototype** | `D:\Projects\orac-systems-operational\orac-systems-demo` | Glassmorphism React SPA on Vercel | UI design source; demo Express server RETIRED |
-| **Integration Kit** | `D:\Projects\orac-systems-operational\integration-kit\orac-ios-integration-kit` | Booking engine, rate limiter, websiteController | **ABSORB into main backend then archive** |
-| **Integration Staging** | `D:\Projects\orac-systems-operational\orac-ios-integration` | Historical handover bundle with older backend+frontend snapshots | **Archive after ingestion** |
+| **Public Website (`orac-systems-demo`)** | `D:\Projects\orac-systems-operational\orac-systems-demo` (Git: `brianlupao123/Orac-system-web`) | Public customer marketing website (React 18 + Vite) deployed to **Vercel** (`https://orac-system-web.vercel.app`) | **SEPARATE REPO & DEPLOYMENT.** Relies on `orac-backend` on Fly.io via HTTP (`POST /api/leads`). Demo Express server RETIRED. |
+| **Integration Kit** | `D:\Projects\orac-systems-operational\integration-kit\orac-ios-integration-kit` | Booking engine, rate limiter, websiteController | **ABSORBED into orac-backend/src/modules/public/** |
+| **Integration Staging** | `D:\Projects\orac-systems-operational\orac-ios-integration` | Historical handover bundle with older backend+frontend snapshots | **Archived reference** |
 | **External Chatbot** | `D:\Projects\orac-systems-operational\orac-chatbot-external` | Standalone chatbot prototype | Reference only |
-| **WordPress Production** | `https://oracsystems.co.zw` | Live public customer website | Keep as-is; embed chat widget IIFE |
 
 ### Operational Documents Directory
 
@@ -272,12 +286,12 @@ COMPANY_CURRENCY
 
 | ID | Decision | Status |
 |----|----------|--------|
-| **D1** | Exactly TWO production apps: WordPress (public) + ORAC-IOS (backend+portal) | ✅ AGREED |
-| **D2** | `orac-systems-demo` is NOT a third app — UI prototype only | ✅ AGREED |
-| **D3** | Demo Express server (`orac-systems-demo/server/`) must be RETIRED | ✅ AGREED |
-| **D4** | All public intake → `POST /api/leads` on ORAC-IOS | ✅ AGREED |
+| **D1** | Two Clean Production Systems (ZERO WordPress): 1) Public marketing website (`orac-systems-demo` deployed to Vercel, repo `brianlupao123/Orac-system-web`), and 2) Operational ERP system (`orac-ios` monorepo: backend on Fly.io, portal on Render). | ✅ AGREED (Clarified 19 Nov 2026) |
+| **D2** | `orac-systems-demo` is a SEPARATE React application, deployed differently (Vercel), whose forms and booking engine rely on the `orac-backend` API over HTTP (`POST /api/leads`). | ✅ AGREED |
+| **D3** | Demo standalone Express server (`orac-systems-demo/server/`) is completely RETIRED — all public endpoints are served by `orac-backend/src/modules/public/`. | ✅ AGREED |
+| **D4** | All public intake → `POST /api/leads` and `POST /api/public/enquiries` on ORAC-backend | ✅ AGREED |
 | **D5** | `POST /api/access-requests` is public (Client Viewer only on public form) | ✅ AGREED |
-| **D6** | Public chat widget → IIFE bundle embedded in WordPress | ✅ AGREED |
+| **D6** | Public chat & enquiry intake → Native in modern React frontend & backend routes (no WordPress embed required) | ✅ AGREED (Clarified 19 Nov 2026) |
 | **D7** | Survey booking = Lead with requested datetime until backend calendar exists | ✅ AGREED |
 | **D8** | No parallel databases (quotes, bookings, clients) | ✅ AGREED |
 | **D9** | Backend uses ESM (`import`/`export`) throughout | ✅ AGREED |
@@ -289,6 +303,7 @@ COMPANY_CURRENCY
 | **D15** | Absorb integration kit INTO main backend then drop `orac-ios-integration` | ✅ AGREED |
 | **D16** | Zero test regressions at every step | ✅ AGREED |
 | **D17** | No new npm dependencies without discussion | ✅ AGREED |
+| **D18** | **Unified Operations Monorepo:** Exactly ONE single Git repository (`orac-ios/`) consolidating the **TWO** operational repositories (`orac-backend/` + `orac-ios-frontend/`). Backend deploys to Fly.io, Portal deploys to Render. `orac-systems-demo` remains a separate repository on Vercel connecting via HTTP. | ✅ AGREED (18 Nov 2026, Confirmed 19 Nov 2026) |
 
 ---
 
@@ -303,7 +318,7 @@ COMPANY_CURRENCY
 | `PUBLIC_WEB_PHASED_PLAN.md` (v2.0) | 5-phase roadmap: P0 Handshake → P1 Local Lead Ingress → P2 Access Requests → P3 Client Portal → P4 Scheduling Engine → P5 Production Hardening |
 | `PUBLIC_WEB_SECURITY_AND_DATA_SCOPE.md` (v2.1) | Dual-baseline verification, fictional test fixtures (.invalid TLD), port 5050, rate limiting, dispatch mechanism verification |
 | `PUBLIC_WEB_CONTRACT_SNAPSHOTS.md` (v2.0) | Schema snapshots of CreateLeadSchema, ClientSubmitPoSchema, VerifyPoSchema, Access Request schema |
-| `PUBLIC_WEB_ARCHITECTURE_CLARIFICATION.md` (v1.0) | Master document: 2-app verdict, WordPress relationship, feature ownership matrix, reusable asset allocation, elimination of third apps |
+| `PUBLIC_WEB_ARCHITECTURE_CLARIFICATION.md` (v1.0) | Historical October 2026 draft: superseded by Brian's confirmation that NO WordPress is used and the public site is the modern React application itself (`LandingPage.jsx` at `/`) |
 
 ### Ingress Route Matrix
 
@@ -453,7 +468,7 @@ COMPANY_CURRENCY
 ### What Brian Must Provide/Decide:
 1. ☐ **Approve the restructure plan** before implementation begins
 2. ☐ **7 Cloud Secrets** (when ready for live deployment): Google OAuth (2), Daily.co (1), Claude API (1), SMTP (3)
-3. ☐ **WordPress admin access** for embedding chat widget IIFE
+3. ~~WordPress admin access~~ (RETIRED — No WordPress used; public web is native React in `orac-ios-frontend`)
 4. ☐ **Confirm survey workflow**: Lead workaround vs proper calendar module
 5. ☐ **Written authorization** for email OTP (S-03 tripwire)
 6. ☐ **Pastel CSV format verification** with accountant
