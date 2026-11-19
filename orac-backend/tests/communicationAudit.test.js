@@ -11,13 +11,14 @@ import {
   getEntityCommunicationHistory,
   getEntityCommunicationStats,
   recordCommunicationEvidence,
+  recordExternalSend,
   getEntityEvidenceHistory,
   getEntityCommunicationTimeline,
   buildChaseDigest
 } from "../src/services/communicationAuditService.js";
 
 import {
-  getTimeline, recordEvidence, getDigest
+  getTimeline, recordEvidence, recordExternalSendEndpoint, getDigest
 } from "../src/controllers/communicationsController.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -382,5 +383,77 @@ describe("communicationsController — Batch 4 handlers", () => {
     assert.equal(res._json.success, true);
     assert.equal(res._json.digest.summary.unpaid_invoices, 1);
     assert.ok(res._json.digest.generated_at);
+  });
+
+  // ── Gap 19 Characterization Tests ─────────────────────────────────
+  it("recordExternalSend logs truthful manual-external status and transport mode", () => {
+    const db = makeDb();
+    const store = makeStore();
+    const result = recordExternalSend({
+      businessRecordType: "quote",
+      businessRecordId: "q-100",
+      recipientEmail: "purchasing@mimosa.co.zw",
+      recipientName: "Mimosa Mining",
+      subject: "ORAC Quotation Q-2026-001",
+      notes: "Copied from clipboard and sent via Outlook desktop",
+      recordedBy: "user-1",
+      store,
+      db
+    });
+
+    assert.equal(result.status, "manual-external");
+    assert.equal(result.transport_mode, "manual-external");
+    assert.equal(result.template_version, "v1");
+    assert.ok(result.notes.includes("[EXTERNAL SEND]"));
+    assert.equal(result.recipient_email, "purchasing@mimosa.co.zw");
+
+    // Check store audit
+    const lastAudit = store._auditLog[store._auditLog.length - 1];
+    assert.equal(lastAudit.action, "EVIDENCE_RECORDED");
+    assert.equal(lastAudit.details.status, "manual-external");
+  });
+
+  it("scrubs tokens, bearer credentials, and passwords from evidence notes and subject", () => {
+    const db = makeDb();
+    const store = makeStore();
+    const result = recordCommunicationEvidence({
+      entityType: "user",
+      entityId: "u-1",
+      channel: "orac_system_dry_run",
+      recipientEmail: "test@orac.test",
+      subject: "Reset token=secret_reset_token_12345",
+      notes: "Bearer eyJhbGciOiJIUzI1NiJ9.secret and password=supersecretpass",
+      recordedBy: "user-1",
+      status: "failed",
+      transportMode: "none",
+      failureReason: "Outbound mail transport unconfigured",
+      store,
+      db
+    });
+
+    assert.ok(!result.subject.includes("secret_reset_token_12345"), "token was scrubbed from subject");
+    assert.ok(result.subject.includes("[REDACTED]"), "redacted placeholder inserted");
+    assert.ok(!result.notes.includes("supersecretpass"), "password was scrubbed from notes");
+    assert.ok(!result.notes.includes("eyJhbGciOiJIUzI1NiJ9"), "bearer token was scrubbed from notes");
+  });
+
+  it("POST /communications/record-external-send endpoint records manual external send truthfully", () => {
+    const db = makeDb();
+    const req = makeReq({
+      business_record_type: "dispatch",
+      business_record_id: "disp-456",
+      channel: "company_outlook",
+      recipient_email: "site@zimplats.co.zw",
+      recipient_name: "Zimplats Site Supervisor",
+      subject: "Dispatch Notice DISP-456"
+    }, db);
+    const res = makeRes();
+
+    recordExternalSendEndpoint(req, res);
+    assert.equal(res._status, 201);
+    assert.equal(res._json.success, true);
+    assert.equal(res._json.evidence.status, "manual-external");
+    assert.equal(res._json.evidence.business_record_type, "dispatch");
+    assert.ok(res._json.message.includes("sent this message outside ORAC"));
   });
 });

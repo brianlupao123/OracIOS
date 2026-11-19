@@ -7,6 +7,7 @@ import { verifySetupToken, clearSetupToken } from "../setupTokens.js";
 import { totpRequiredFor } from "../totpPolicy.js";
 import { beginTotpChallenge } from "./totpController.js";
 import { verifyGoogleIdToken, linkGoogleAccount } from "../services/googleOAuthService.js";
+import { recordCommunicationEvidence } from "../services/communicationAuditService.js";
 
 // Compared against when the account does not exist or is inactive, so the work
 // done (and the response time) does not reveal whether an email has an account.
@@ -102,6 +103,29 @@ export const requestPasswordReset = (req, res) => {
   }
 
   req.store.audit(req.db, user, "user", user.id, "PASSWORD_RESET_REQUESTED", null, { delivery: "not_configured" });
+
+  try {
+    recordCommunicationEvidence({
+      entityType: "user",
+      entityId: user.id,
+      channel: "orac_system_dry_run",
+      recipientEmail: user.email,
+      recipientName: `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.username || user.email,
+      subject: "Password Reset Request",
+      notes: "Password reset requested; automated outbound email dispatch unconfigured (pilot security policy).",
+      sentAt: new Date().toISOString(),
+      recordedBy: user.id,
+      status: "failed",
+      transportMode: "none",
+      templateVersion: "v1",
+      failureReason: "Outbound email transport unconfigured in pilot mode.",
+      audit: false,
+      store: req.store,
+      db: req.db
+    });
+  } catch (_err) {
+    // non-fatal evidence recording
+  }
 
   return res.json(genericResponse);
 };

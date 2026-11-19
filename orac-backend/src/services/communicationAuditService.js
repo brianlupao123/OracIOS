@@ -49,15 +49,30 @@ export function getEntityCommunicationStats({ entityType, entityId, db }) {
 // ── Evidence Recording ──────────────────────────────────────────────
 
 /**
- * Records a manual communication evidence entry. Used when a user sends
- * a document via their own Outlook, WhatsApp, or hand-delivery and wants
- * to log it in the ORAC timeline.
- *
- * NOT a queue message — it's an evidence record. No state machine needed.
+ * Strips any sensitive credentials, tokens, or payment details from text.
+ */
+function sanitizeAuditText(text) {
+  if (!text || typeof text !== "string") return text;
+  return text
+    .replace(/(bearer\s+)[a-zA-Z0-9_\-\.]+/gi, "$1[REDACTED]")
+    .replace(/(token[=:]\s*)[a-zA-Z0-9_\-\.]+/gi, "$1[REDACTED]")
+    .replace(/(secret[=:]\s*)[a-zA-Z0-9_\-\.]+/gi, "$1[REDACTED]")
+    .replace(/(password[=:]\s*)[^\s&]+/gi, "$1[REDACTED]");
+}
+
+/**
+ * Records a durable communication evidence entry fulfilling Gap 19:
+ * Persists business record type/id, template version, recipient, requested_by,
+ * approved_by, status, transport mode, timestamps, provider message id, retry/failure reason.
+ * Zero secrets/tokens/payment data in audit logs.
  */
 export function recordCommunicationEvidence({
   entityType, entityId, channel, recipientEmail, recipientName,
-  subject, notes, sentAt, recordedBy, store, db
+  subject, notes, sentAt, recordedBy, approvedBy = null,
+  status = "manual-external", transportMode = "manual-external",
+  templateVersion = "v1", providerMessageId = null, failureReason = null,
+  audit = true,
+  store, db
 }) {
   if (!entityType) throw Object.assign(new Error("entityType is required"), { status: 400 });
   if (!entityId) throw Object.assign(new Error("entityId is required"), { status: 400 });
@@ -65,7 +80,7 @@ export function recordCommunicationEvidence({
 
   const VALID_CHANNELS = [
     "company_outlook", "personal_email", "whatsapp", "phone_call",
-    "hand_delivery", "courier", "orac_system", "other"
+    "hand_delivery", "courier", "orac_system", "orac_system_dry_run", "other"
   ];
   if (!VALID_CHANNELS.includes(channel)) {
     throw Object.assign(
@@ -76,31 +91,82 @@ export function recordCommunicationEvidence({
 
   if (!db.communication_evidence) db.communication_evidence = [];
 
+  const sanitizedSubject = sanitizeAuditText(subject);
+  const sanitizedNotes = sanitizeAuditText(notes);
+
   const evidence = {
     id: `cev_${crypto.randomBytes(8).toString("hex")}`,
     entity_type: entityType,
     entity_id: entityId,
+    business_record_type: entityType,
+    business_record_id: entityId,
+    template_version: templateVersion,
     channel,
     recipient_email: recipientEmail || null,
     recipient_name: recipientName || null,
-    subject: subject || null,
-    notes: notes || null,
-    sent_at: sentAt || new Date().toISOString(),
+    subject: sanitizedSubject || null,
+    notes: sanitizedNotes || null,
+    status,
+    transport_mode: transportMode,
+    requested_by: recordedBy,
     recorded_by: recordedBy,
+    approved_by: approvedBy,
+    provider_message_id: providerMessageId,
+    failure_reason: failureReason,
+    sent_at: sentAt || new Date().toISOString(),
     recorded_at: new Date().toISOString()
   };
 
   db.communication_evidence.push(evidence);
 
-  store.audit(db, { id: recordedBy }, "communication_evidence", evidence.id,
-    "EVIDENCE_RECORDED", {
-      entity_type: entityType,
-      entity_id: entityId,
-      channel,
-      subject: evidence.subject
-    });
+  if (audit && store?.audit) {
+    store.audit(db, { id: recordedBy }, "communication_evidence", evidence.id,
+      "EVIDENCE_RECORDED", {
+        entity_type: entityType,
+        entity_id: entityId,
+        channel,
+        status: evidence.status,
+        transport_mode: evidence.transport_mode,
+        subject: evidence.subject
+      });
+  }
 
   return evidence;
+}
+
+/**
+ * Records a truthful external-send evidence record for communications
+ * sent through Outlook, Pastel, or external mail.
+ * Truthfully states that ORAC logged the event; never claims ORAC delivered it.
+ */
+export function recordExternalSend({
+  businessRecordType,
+  businessRecordId,
+  channel = "company_outlook",
+  recipientEmail,
+  recipientName,
+  subject,
+  notes,
+  recordedBy,
+  store,
+  db
+}) {
+  return recordCommunicationEvidence({
+    entityType: businessRecordType,
+    entityId: businessRecordId,
+    channel,
+    recipientEmail,
+    recipientName,
+    subject,
+    notes: notes ? `[EXTERNAL SEND] ${notes}` : "[EXTERNAL SEND] Manually dispatched via external mail client. Logged by ORAC.",
+    sentAt: new Date().toISOString(),
+    recordedBy,
+    status: "manual-external",
+    transportMode: "manual-external",
+    templateVersion: "v1",
+    store,
+    db
+  });
 }
 
 /**

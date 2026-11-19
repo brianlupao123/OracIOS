@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { admin, assistant, collections, documents, quotes as quotesApi } from "../api/client.js";
+import { admin, assistant, collections, communications, documents, quotes as quotesApi } from "../api/client.js";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import Modal from "../components/Modal.jsx";
 import RecordAnalysisModal from "../components/RecordAnalysisModal.jsx";
@@ -302,7 +302,20 @@ export default function QuotationsPage({ user }) {
     setNotice("");
     try {
       await quotesApi.transition(quote.id, "Sent");
-      setNotice(`${quote.quote_number || quote.id} was sent to the client.`);
+      try {
+        const client = clients.find((c) => c.id === quote.client_id);
+        await communications.recordExternalSend({
+          business_record_type: "quote",
+          business_record_id: quote.id,
+          recipient_email: client?.email || client?.contact_email || "N/A",
+          recipient_name: client?.name || quote.client_name || "N/A",
+          subject: `ORAC Quotation ${quote.quote_number || quote.id}`,
+          notes: "Quotation email copied to clipboard and logged as external manual send."
+        });
+      } catch (_ignored) {
+        // backend quote transition creates evidence record as well
+      }
+      setNotice(`${quote.quote_number || quote.id} was recorded as sent to the client (logged externally).`);
       await load();
     } catch (err) {
       setError(err.message);

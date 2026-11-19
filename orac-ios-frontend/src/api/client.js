@@ -1138,4 +1138,19 @@ export const sync = {
   }
 };
 
+// Subsystem 14: Communication & Evidence Engine client (Gap 19)
+export const communications = {
+  getTemplates() { return request("/communications/templates"); },
+  getTemplate(name) { return request(`/communications/templates/${encodeURIComponent(name)}`); },
+  preview(payload) { return request("/communications/preview", { method: "POST", body: JSON.stringify(payload) }); },
+  getTimeline(entityType, entityId) { return request(`/communications/timeline/${encodeURIComponent(entityType)}/${encodeURIComponent(entityId)}`); },
+  recordEvidence(payload) { return request("/communications/evidence", { method: "POST", body: JSON.stringify(payload) }); },
+  recordExternalSend(payload) { return request("/communications/record-external-send", { method: "POST", body: JSON.stringify(payload) }); },
+  getDigest(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return request(`/communications/digest${q ? `?${q}` : ""}`);
+  }
+};
+
+
 

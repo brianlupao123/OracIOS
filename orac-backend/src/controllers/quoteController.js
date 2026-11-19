@@ -6,6 +6,7 @@ import { calculateV5QuoteLines, quoteTotal } from "../v5QuoteRules.js";
 import { calculateQuoteFinancials } from "../quoteCalculation.js";
 import { validateLeadLink } from "../recordTrail.js";
 import { isQuoteInSalesPortfolio } from "./coreController.js";
+import { recordCommunicationEvidence } from "../services/communicationAuditService.js";
 
 function getActor(req) {
   return req.db.users.find((u) => u.id === req.user.id);
@@ -457,6 +458,29 @@ export const transition = (req, res) => {
     refreshTaxConfigurationForIssue(req, quote, actor);
   }
   const result = transitionQuote(req.db, req.store, req.params.id, req.body.target_state, req.body, actor);
+  if (req.body.target_state === "Sent") {
+    try {
+      const client = req.db.clients?.find((c) => c.id === quote.client_id);
+      recordCommunicationEvidence({
+        entityType: "quote",
+        entityId: quote.id,
+        channel: req.body.channel || "company_outlook",
+        recipientEmail: req.body.recipient_email || client?.email || client?.contact_email || null,
+        recipientName: req.body.recipient_name || client?.name || quote.client_name || null,
+        subject: req.body.subject || `ORAC Quotation ${quote.quote_number || quote.id}`,
+        notes: req.body.notes || "[EXTERNAL SEND] Quotation marked as Sent. Dispatched manually via external mail client.",
+        sentAt: new Date().toISOString(),
+        recordedBy: actor.id,
+        status: "manual-external",
+        transportMode: "manual-external",
+        templateVersion: "v1",
+        store: req.store,
+        db: req.db
+      });
+    } catch (_err) {
+      // non-fatal evidence recording
+    }
+  }
   res.json({ success: true, data: result });
 };
 

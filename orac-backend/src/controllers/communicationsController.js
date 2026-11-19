@@ -4,7 +4,7 @@ import {
 } from "../services/communicationTemplateService.js";
 import {
   getEntityCommunicationTimeline, getEntityCommunicationStats,
-  recordCommunicationEvidence, buildChaseDigest
+  recordCommunicationEvidence, recordExternalSend, buildChaseDigest
 } from "../services/communicationAuditService.js";
 
 /**
@@ -65,6 +65,26 @@ export function previewCommunication(req, res) {
     const preview = renderPreview(template_name, context);
     if (preview.error) return res.status(400).json({ success: false, message: preview.error });
 
+    // Gap 19: Durable record for every communication preview
+    if (entity_type && entity_id && req.store && req.db) {
+      recordCommunicationEvidence({
+        entityType: entity_type,
+        entityId: entity_id,
+        channel: "orac_system_dry_run",
+        recipientEmail: preview.recipient_email || context.client_email || null,
+        recipientName: preview.recipient_name || context.client_name || null,
+        subject: preview.subject || `Preview: ${template_name}`,
+        notes: `[COMMUNICATION_PREVIEW] Rendered template '${template_name}' in dry-run mode.`,
+        sentAt: new Date().toISOString(),
+        recordedBy: req.user?.id || "system",
+        status: "previewed",
+        transportMode: "dry-run",
+        templateVersion: "v1",
+        store: req.store,
+        db: req.db
+      });
+    }
+
     return res.json({ success: true, preview });
   } catch (err) {
     return res.status(err.status || 500).json({ success: false, message: err.message });
@@ -94,7 +114,9 @@ export function recordEvidence(req, res) {
   try {
     const {
       entity_type, entity_id, channel, recipient_email,
-      recipient_name, subject, notes, sent_at
+      recipient_name, subject, notes, sent_at,
+      status, transport_mode, template_version, approved_by,
+      provider_message_id, failure_reason
     } = req.body;
 
     const evidence = recordCommunicationEvidence({
@@ -107,11 +129,49 @@ export function recordEvidence(req, res) {
       notes,
       sentAt: sent_at,
       recordedBy: req.user.id,
+      approvedBy: approved_by || null,
+      status: status || "manual-external",
+      transportMode: transport_mode || "manual-external",
+      templateVersion: template_version || "v1",
+      providerMessageId: provider_message_id || null,
+      failureReason: failure_reason || null,
       store: req.store,
       db: req.db
     });
 
     return res.status(201).json({ success: true, evidence });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+// POST /api/communications/record-external-send
+// Dedicated endpoint for logging emails sent manually via Outlook/Pastel/external mail
+export function recordExternalSendEndpoint(req, res) {
+  try {
+    const {
+      business_record_type, business_record_id, channel,
+      recipient_email, recipient_name, subject, notes
+    } = req.body;
+
+    const evidence = recordExternalSend({
+      businessRecordType: business_record_type || req.body.entity_type,
+      businessRecordId: business_record_id || req.body.entity_id,
+      channel: channel || "company_outlook",
+      recipientEmail: recipient_email,
+      recipientName: recipient_name,
+      subject,
+      notes,
+      recordedBy: req.user.id,
+      store: req.store,
+      db: req.db
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "External send logged truthfully. ORAC records that you sent this message outside ORAC.",
+      evidence
+    });
   } catch (err) {
     return res.status(err.status || 500).json({ success: false, message: err.message });
   }

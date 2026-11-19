@@ -4,7 +4,7 @@
 import { Router } from "express";
 import {
   listCommunicationTemplates, getCommunicationTemplate, previewCommunication,
-  getTimeline, recordEvidence, getDigest
+  getTimeline, recordEvidence, recordExternalSendEndpoint, getDigest
 } from "../../controllers/communicationsController.js";
 
 const communicationsRouter = Router();
@@ -14,6 +14,7 @@ communicationsRouter.get("/communications/templates/:name", getCommunicationTemp
 communicationsRouter.post("/communications/preview", previewCommunication);
 communicationsRouter.get("/communications/timeline/:entityType/:entityId", getTimeline);
 communicationsRouter.post("/communications/evidence", recordEvidence);
+communicationsRouter.post("/communications/record-external-send", recordExternalSendEndpoint);
 communicationsRouter.get("/communications/digest", getDigest);
 
 export default communicationsRouter;
