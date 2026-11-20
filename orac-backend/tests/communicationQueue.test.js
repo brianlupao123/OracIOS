@@ -25,6 +25,7 @@ function makeDb() {
 }
 
 const originalDryRun = process.env.COMMUNICATIONS_DRY_RUN;
+const originalAllowlist = process.env.CONTROLLED_RECIPIENT_ALLOWLIST;
 
 // ── Tests ────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ describe("Communication Queue Service (Batch 2)", () => {
 
   beforeEach(() => {
     process.env.COMMUNICATIONS_DRY_RUN = "true"; // Explicit dry-run
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "*"; // Unit test permissive allowlist
     db = makeDb();
     store = makeStore();
   });
@@ -40,6 +42,8 @@ describe("Communication Queue Service (Batch 2)", () => {
   afterEach(() => {
     if (originalDryRun !== undefined) process.env.COMMUNICATIONS_DRY_RUN = originalDryRun;
     else delete process.env.COMMUNICATIONS_DRY_RUN;
+    if (originalAllowlist !== undefined) process.env.CONTROLLED_RECIPIENT_ALLOWLIST = originalAllowlist;
+    else delete process.env.CONTROLLED_RECIPIENT_ALLOWLIST;
   });
 
   it("createMessage produces a Draft message", () => {
