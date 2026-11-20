@@ -114,7 +114,8 @@ function sourceFiles(dir) {
 
 // ---------- the guard ----------
 
-test("no mail-sending package is declared in backend/package.json", { skip: !fs.existsSync(PACKAGE_JSON) && "backend/package.json not found at ../package.json" }, () => {
+test("no mail-sending package is declared in backend/package.json", () => {
+  assert.equal(fs.existsSync(PACKAGE_JSON), true, `backend/package.json must exist at ${PACKAGE_JSON}`);
   const pkg = JSON.parse(fs.readFileSync(PACKAGE_JSON, "utf8"));
   const declared = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]
     .flatMap((field) => Object.keys(pkg[field] || {}));

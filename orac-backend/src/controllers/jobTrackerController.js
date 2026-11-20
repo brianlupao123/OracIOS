@@ -151,6 +151,7 @@ export function getJobTracker(req, res) {
         client_pr: quote.client_pr_number || quote.client_pr || "Not captured",
         planned_start: dispatch?.scheduled_start || "Not captured",
         actual_start: dispatch?.actual_start || "Not captured",
+        completion_record: dispatch?.completion_record || dispatch?.completed_at || "Not captured",
         dispatch_id: dispatch?.id || null,
         dispatch_number: dispatch?.dispatch_number || null,
         actual_hours: actuals.total,
