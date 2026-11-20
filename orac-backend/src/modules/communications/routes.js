@@ -2,6 +2,7 @@
  * Communications Module Routes — Templates, preview, timeline, evidence, digest
  */
 import { Router } from "express";
+import { roles } from "../../permissions.js";
 import {
   listCommunicationTemplates, getCommunicationTemplate, previewCommunication,
   getTimeline, recordEvidence, recordExternalSendEndpoint, getDigest,
@@ -20,6 +21,15 @@ communicationsRouter.post("/communications/record-external-send", recordExternal
 communicationsRouter.get("/communications/digest", getDigest);
 
 // Queue endpoints
+// Controlled pilot only: these endpoints expose recipients and message bodies.
+// A role-scoped quote dispatch contract is required before Sales or Operations
+// can use them directly.
+communicationsRouter.use("/communications/queue", (req, res, next) => {
+  if (req.user?.role !== roles.ADMIN) {
+    return res.status(403).json({ success: false, message: "Admin access required for the communication queue." });
+  }
+  next();
+});
 communicationsRouter.get("/communications/queue", listQueueMessages);
 communicationsRouter.get("/communications/queue/stats", getCommunicationQueueStats);
 communicationsRouter.post("/communications/queue", createQueueMessage);

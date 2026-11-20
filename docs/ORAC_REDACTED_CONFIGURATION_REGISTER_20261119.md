@@ -72,6 +72,8 @@ Pursuant to **Gap 19** of the ORAC Production Remediation Scope Addendum, this r
 | `SMTP_USER` | Production, Pilot | DevOps Lead | Authenticating sender mailbox user | Valid email address / account name. Redacted. | Used during SMTP AUTH LOGIN handshake. |
 | `SMTP_PASS` | Production, Pilot | DevOps Lead | Mailbox provider authentication credential | App-specific password (16 characters) or API token. **Strictly Redacted. Zero Secrets in Docs/Git.** | Base64-encoded during AUTH LOGIN. Never echoed to logs or error messages. |
 | `SMTP_FROM` | Production, Pilot | DevOps Lead | Sender mailbox | One bare email address (e.g. `"sender@oracservices.com"`), with no display name or angle brackets. Defaults to `SMTP_USER` when unset. | Used in SMTP `MAIL FROM` and the message From header. Invalid values are refused before sending. |
+
+The pilot communication queue is Admin-only because it contains recipient addresses and message bodies. `CONTROLLED_RECIPIENT_ALLOWLIST=*` is refused. The SMTP client requires TLS before authentication; it also refuses attachments until the actual quotation PDF is included through an approved, tested attachment path. No provider or inbox delivery has been verified by the isolated PostgreSQL pilot.
 | `SMTP_CONNECTION_TIMEOUT_MS` | Production, Pilot | DevOps Lead | TCP socket connection & handshake timeout | Integer milliseconds. Default: `10000` (10 seconds). | Prevents event-loop stalls on unreachable or hanging mail relays. |
 
 #### Durable Communication Records Specification (Non-Negotiable)

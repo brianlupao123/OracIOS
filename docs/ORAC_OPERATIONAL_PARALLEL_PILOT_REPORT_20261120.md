@@ -172,6 +172,10 @@ Per prompt instructions, code changes and test/documentation assets are separate
 
 ## 7. Remaining External Facts & Safe Deployment Plan
 
+### Post-pilot release correction
+
+The 12-step pilot sent no external email. SMTP was exercised against a local mock only; no provider acceptance or recipient inbox receipt is evidenced. The portal quotation button remains a manual mail-app workflow. Queue HTTP routes are Admin-only for the controlled pilot; a portfolio-scoped Sales/Operations sending contract is still required. The current transport sends text only and refuses attachments rather than silently dropping a quotation PDF. Live SMTP requires an approved sender mailbox, bare `SMTP_FROM` address, TLS, and a received-message test. The Neon test database credential exposed in the first local draft of this report was redacted before push and must be rotated.
+
 ### 7.1 Remaining External Facts (Unblocked for Production Operation)
 1. **Physical Provider Credentials:** Real email delivery is gated by `COMMUNICATIONS_DRY_RUN=true`. Once Brian configures `SMTP_USER` and `SMTP_PASS` in Fly/Render secrets, live transmission can be safely enabled.
 2. **Pastel Partner / Evolution File Ingestion:** Pastel remains strictly in **parallel review mode**. The output file `orac-review-invoices-YYYY-MM-DD.csv` carries `# [PASTEL PARALLEL MODE — REVIEW ONLY / NOT POSTED]` and must be reviewed by accounting personnel; no automatic posting script is connected.
