@@ -2,8 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import bcrypt from "bcrypt";
 import { pool, ensureTableExists } from "../src/pool.js";
+import { requireEmptyStoreBootstrap } from "../src/verificationScriptGuards.js";
 
 try {
+  const sourceFile = requireEmptyStoreBootstrap(process.argv.slice(2), process.env);
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
@@ -11,7 +13,7 @@ try {
     throw new Error("Set BOOTSTRAP_ADMIN_EMAIL and a unique 16-72 byte BOOTSTRAP_ADMIN_PASSWORD before importing.");
   }
   if (password === "password123") throw new Error("Demo passwords are forbidden.");
-  const input = resolve(process.argv[2] || "data/db.json");
+  const input = resolve(sourceFile);
   const data = JSON.parse(readFileSync(input, "utf8"));
   const admin = data.users?.find((user) => user.email?.toLowerCase() === email && user.role === "Admin");
   if (!admin) throw new Error("Bootstrap email must belong to an Admin in the import data.");

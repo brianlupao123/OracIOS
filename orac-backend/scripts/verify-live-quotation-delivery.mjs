@@ -1,7 +1,9 @@
 /**
- * Operational Verification Script: Scoped Quotation-PDF Email Delivery
+ * Local fixture quotation-PDF SMTP probe.
  *
- * Verifies end-to-end quotation PDF generation and SMTP delivery to an approved allowlist inbox.
+ * Reads data/db.json. A dry run proves PDF/MIME construction only; a live run
+ * proves SMTP relay acceptance only. Neither proves the deployed portal,
+ * PostgreSQL quotation state, or receipt in the target inbox.
  * Enforces:
  *  - Strict recipient allowlist check
  *  - Valid RFC 2045 multipart/mixed attachment transport
@@ -14,11 +16,14 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { sendEmail, isRecipientPermitted, getTransportConfig } from "../src/services/communicationTransportService.js";
 import { generateQuotePdfBuffer } from "../src/services/quotationEmailService.js";
+import { requireLocalEmailProbe } from "../src/verificationScriptGuards.js";
 
 async function main() {
-  console.log("=== ORAC Operational Email Delivery Verification ===");
+  console.log("=== ORAC Local Fixture Quotation Email Probe ===");
 
   const config = getTransportConfig();
+  const { fixturePath, quoteId } = requireLocalEmailProbe(process.argv.slice(2), process.env, config.dryRun);
+  console.log("Source: explicitly supplied local JSON fixture; not the live PostgreSQL store or portal.");
   console.log(`Transport Mode: ${config.dryRun ? "DRY-RUN (Safe Simulation)" : "LIVE-SMTP (Real Relay)"}`);
   console.log(`SMTP Host:      ${config.host || "(not set)"}`);
   console.log(`SMTP Port:      ${config.port}`);
@@ -35,12 +40,12 @@ async function main() {
     process.exit(1);
   }
 
-  // Load quote data from db.json
-  const dbPath = resolve("data/db.json");
+  // Load only the explicitly named local fixture and quotation.
+  const dbPath = resolve(fixturePath);
   const db = JSON.parse(readFileSync(dbPath, "utf8"));
-  const quote = db.quotes?.[0];
+  const quote = db.quotes?.find((item) => item.id === quoteId || item.quote_number === quoteId);
   if (!quote) {
-    console.error("FAILED: No quote found in data/db.json");
+    console.error("FAILED: Requested quote not found in the supplied local fixture.");
     process.exit(1);
   }
 
@@ -68,7 +73,8 @@ async function main() {
   });
   const durationMs = Date.now() - startTime;
 
-  console.log("\n=== Delivery Evidence ===");
+  if (!result.success) throw new Error("The local fixture email probe did not succeed.");
+  console.log(config.dryRun ? "\n=== Simulated Transport Result ===" : "\n=== SMTP Relay Acceptance (Inbox Receipt Unverified) ===");
   console.log(`Mode:            ${result.mode}`);
   console.log(`Success:         ${result.success}`);
   console.log(`Message-ID:      ${result.messageId}`);
