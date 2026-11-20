@@ -296,29 +296,28 @@ export default function QuotationsPage({ user }) {
   async function confirmSendQuote() {
     const quote = emailPreviewQuote;
     if (!quote) return;
-    setEmailPreviewQuote(null);
     setBusyId(quote.id);
     setError("");
     setNotice("");
     try {
+      const client = clients.find((c) => c.id === quote.client_id);
+      const recipientEmail = client?.email || client?.contact_email;
+      if (!recipientEmail) throw new Error("Add a client email address before recording a send.");
+      await communications.recordExternalSend({
+        business_record_type: "quote",
+        business_record_id: quote.id,
+        recipient_email: recipientEmail,
+        recipient_name: client?.name || quote.client_name || "",
+        subject: `ORAC Quotation ${quote.quote_number || quote.id}`,
+        notes: "User confirmed sending the downloaded quotation PDF through an external mail app."
+      });
       await quotesApi.transition(quote.id, "Sent");
-      try {
-        const client = clients.find((c) => c.id === quote.client_id);
-        await communications.recordExternalSend({
-          business_record_type: "quote",
-          business_record_id: quote.id,
-          recipient_email: client?.email || client?.contact_email || "N/A",
-          recipient_name: client?.name || quote.client_name || "N/A",
-          subject: `ORAC Quotation ${quote.quote_number || quote.id}`,
-          notes: "Quotation email copied to clipboard and logged as external manual send."
-        });
-      } catch (_ignored) {
-        // backend quote transition creates evidence record as well
-      }
-      setNotice(`${quote.quote_number || quote.id} was recorded as sent to the client (logged externally).`);
+      setEmailPreviewQuote(null);
+      setNotice(`${quote.quote_number || quote.id} was recorded as sent through your mail app.`);
       await load();
     } catch (err) {
       setError(err.message);
+      throw err;
     } finally {
       setBusyId("");
     }
@@ -901,8 +900,9 @@ export default function QuotationsPage({ user }) {
         ].filter(Boolean).join("\n") : ""}
         referenceId={emailPreviewQuote?.quote_number || emailPreviewQuote?.id || ""}
         docType="Quotation"
+        onDownloadDocument={() => documents.download("quotes", emailPreviewQuote.id)}
         onConfirmSend={confirmSendQuote}
-        confirmLabel="📋 Copy to Clipboard & Mark as Sent"
+        confirmLabel="I sent the email with the PDF"
       />
     </div>
   );

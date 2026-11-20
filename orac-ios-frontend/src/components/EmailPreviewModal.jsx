@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Modal from "./Modal.jsx";
 import Button from "./ui/Button.jsx";
 import Input from "./ui/Input.jsx";
@@ -12,26 +12,60 @@ export default function EmailPreviewModal({
   referenceId,
   docType = "Document",
   onConfirmSend,
-  confirmLabel = "Copy to Clipboard & Confirm Send"
+  onDownloadDocument,
+  confirmLabel = "I sent the email with the PDF"
 }) {
   const [copied, setCopied] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setCopied(false);
+    setDownloaded(false);
+    setError("");
+  }, [isOpen, referenceId]);
 
   if (!isOpen) return null;
 
-  async function handleCopyAndSend() {
+  const hasRecipient = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient || "");
+
+  async function handleCopy() {
     setSubmitting(true);
+    setError("");
     try {
       const fullEmail = `To: ${recipient || "N/A"}\nSubject: ${subject || "N/A"}\n\n${bodyText || ""}`;
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(fullEmail);
-      }
+      if (!navigator?.clipboard?.writeText) throw new Error("Clipboard access is unavailable in this browser.");
+      await navigator.clipboard.writeText(fullEmail);
       setCopied(true);
-      if (onConfirmSend) {
-        await onConfirmSend();
-      }
     } catch (err) {
-      console.error("Failed to copy or confirm send:", err);
+      setError(err.message || "Could not copy the email draft.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDownload() {
+    setSubmitting(true);
+    setError("");
+    try {
+      await onDownloadDocument();
+      setDownloaded(true);
+    } catch (err) {
+      setError(err.message || "Could not download the quotation PDF.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleConfirmSent() {
+    if (!copied || !downloaded || !hasRecipient) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await onConfirmSend();
+    } catch (err) {
+      setError(err.message || "Could not record the external send.");
     } finally {
       setSubmitting(false);
     }
@@ -45,14 +79,13 @@ export default function EmailPreviewModal({
       size="xl"
     >
       <div className="space-y-4 text-ux-body" data-evidence="email-preview-modal">
-        {/* Dry-run safety warning banner */}
+        {/* External email workflow: the user must perform the send in their mail app. */}
         <div className="rounded-lg border border-orac-warning-border bg-orac-warning-bg p-4 text-orac-warning-text shadow-xs">
           <div className="flex items-center gap-2 font-bold text-orac-warning-text">
-            <span>[DRY-RUN PREVIEW ONLY — NO REAL OUTBOUND EMAIL DISPATCHED]</span>
+            <span>Manual email preparation — ORAC has not sent this message</span>
           </div>
           <p className="mt-1 text-ux-caption text-orac-warning-text leading-relaxed">
-            Automated outbound email dispatch is strictly restricted during pilot operations.
-            Review the generated message content below and copy it to your desktop mail client (Outlook / Thunderbird) for manual dispatch.
+            Download the quotation PDF, copy this email draft, attach the PDF in your mail app, and send it there. Confirm below only after sending.
           </p>
         </div>
 
@@ -85,11 +118,12 @@ export default function EmailPreviewModal({
           </div>
         </div>
 
-        {copied && (
+        {(copied || downloaded) && (
           <div className="rounded-md border border-orac-success-border bg-orac-success-bg p-2 text-ux-caption font-semibold text-orac-success-text">
-            Copied to clipboard! Message status updated.
+            {downloaded ? "PDF downloaded. " : ""}{copied ? "Draft copied. " : ""}The quote is still Draft until you confirm the external send.
           </div>
         )}
+        {error && <p role="alert" className="text-orac-error">{error}</p>}
 
         <div className="flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-orac-border-default">
           <Button
@@ -98,11 +132,9 @@ export default function EmailPreviewModal({
           >
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            disabled={submitting}
-            onClick={handleCopyAndSend}
-          >
+          {onDownloadDocument && <Button variant="secondary" disabled={submitting} onClick={handleDownload}>Download quotation PDF</Button>}
+          <Button variant="secondary" disabled={submitting || !hasRecipient} onClick={handleCopy}>Copy email draft</Button>
+          <Button variant="primary" disabled={submitting || !copied || !downloaded || !hasRecipient} onClick={handleConfirmSent}>
             {submitting ? "Processing..." : confirmLabel}
           </Button>
         </div>
