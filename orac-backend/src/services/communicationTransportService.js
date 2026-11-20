@@ -86,8 +86,9 @@ export function getTransportConfig() {
 
 /**
  * Builds an RFC 5322 compliant email message buffer.
+ * Supports multipart/mixed for scoped PDF attachments.
  */
-export function buildMimeMessage({ from, to, toName, subject, body, html }) {
+export function buildMimeMessage({ from, to, toName, subject, body, html, attachments = [] }) {
   for (const [field, value] of Object.entries({ from, to, toName, subject })) {
     if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
       throw Object.assign(new Error(`Invalid ${field} mail header`), { status: 400 });
@@ -104,6 +105,26 @@ export function buildMimeMessage({ from, to, toName, subject, body, html }) {
   const toHeader = toName ? `"${toName.replace(/"/g, "")}" <${to}>` : `<${to}>`;
   const fromHeader = `<${from}>`;
 
+  const safeBody = body.replace(/\r?\n/g, "\r\n").replace(/(^|\r\n)\./g, "$1..");
+
+  if (!attachments || attachments.length === 0) {
+    const headers = [
+      `From: ${fromHeader}`,
+      `To: ${toHeader}`,
+      `Subject: ${subject}`,
+      `Date: ${dateStr}`,
+      `Message-ID: ${messageId}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/plain; charset=UTF-8`,
+      `Content-Transfer-Encoding: 8bit`,
+      `X-ORAC-Transport: controlled-pilot`
+    ];
+    const payload = `${headers.join("\r\n")}\r\n\r\n${safeBody}\r\n`;
+    return { messageId, payload };
+  }
+
+  // Scoped multipart/mixed MIME encoding for approved PDF attachments
+  const boundary = `----=_Part_${crypto.randomBytes(16).toString("hex")}`;
   const headers = [
     `From: ${fromHeader}`,
     `To: ${toHeader}`,
@@ -111,13 +132,32 @@ export function buildMimeMessage({ from, to, toName, subject, body, html }) {
     `Date: ${dateStr}`,
     `Message-ID: ${messageId}`,
     `MIME-Version: 1.0`,
-    `Content-Type: text/plain; charset=UTF-8`,
-    `Content-Transfer-Encoding: 8bit`,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     `X-ORAC-Transport: controlled-pilot`
   ];
 
-  const safeBody = body.replace(/\r?\n/g, "\r\n").replace(/(^|\r\n)\./g, "$1..");
-  const payload = `${headers.join("\r\n")}\r\n\r\n${safeBody}\r\n`;
+  const parts = [
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${safeBody}`
+  ];
+
+  for (const att of attachments) {
+    const filename = att.filename.replace(/[\r\n"/\\]/g, "_");
+    const contentType = att.contentType || "application/pdf";
+    const buffer = Buffer.isBuffer(att.content)
+      ? att.content
+      : Buffer.from(att.content, "base64");
+    const b64 = buffer.toString("base64");
+    const foldedB64 = b64.match(/.{1,76}/g)?.join("\r\n") || "";
+    parts.push(
+      `--${boundary}\r\n` +
+      `Content-Type: ${contentType}; name="${filename}"\r\n` +
+      `Content-Transfer-Encoding: base64\r\n` +
+      `Content-Disposition: attachment; filename="${filename}"\r\n\r\n` +
+      `${foldedB64}`
+    );
+  }
+
+  const payload = `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}\r\n--${boundary}--\r\n`;
   return { messageId, payload };
 }
 
@@ -292,10 +332,37 @@ export async function sendEmail({ to, toName = "", subject, body, html = null, a
   if (!to) {
     throw Object.assign(new Error("Recipient email is required"), { status: 400 });
   }
-  if (attachments.length > 0) {
-    throw Object.assign(new Error("Email attachments are not supported by this transport"), {
-      status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED"
-    });
+  if (attachments && attachments.length > 0) {
+    for (const att of attachments) {
+      if (!att || typeof att !== "object" || !att.filename || !att.content) {
+        throw Object.assign(new Error("Email attachments are not supported by this transport"), {
+          status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED"
+        });
+      }
+      if (!/^[a-zA-Z0-9._-]+\.pdf$/i.test(att.filename)) {
+        throw Object.assign(new Error("Only scoped PDF attachments are supported by this transport"), {
+          status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED"
+        });
+      }
+      let buffer = null;
+      if (Buffer.isBuffer(att.content)) {
+        buffer = att.content;
+      } else if (typeof att.content === "string") {
+        buffer = att.content.startsWith("%PDF")
+          ? Buffer.from(att.content, "utf8")
+          : Buffer.from(att.content, "base64");
+      }
+      if (!buffer || buffer.length === 0 || !buffer.subarray(0, 5).toString("utf8").startsWith("%PDF")) {
+        throw Object.assign(new Error("Email attachments must be valid PDF documents"), {
+          status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED"
+        });
+      }
+      if (buffer.length > 10 * 1024 * 1024) {
+        throw Object.assign(new Error("Attachment exceeds maximum allowed size (10MB)"), {
+          status: 422, code: "EMAIL_ATTACHMENT_TOO_LARGE"
+        });
+      }
+    }
   }
 
   // 1. Strict recipient allowlist validation
@@ -319,6 +386,7 @@ export async function sendEmail({ to, toName = "", subject, body, html = null, a
       messageId: dryId,
       recipient: to,
       subject,
+      attachments_count: attachments.length,
       timestamp: new Date().toISOString(),
       notes: "COMMUNICATIONS_DRY_RUN is active. Message logged truthfully without external network transmission."
     };
@@ -341,7 +409,8 @@ export async function sendEmail({ to, toName = "", subject, body, html = null, a
     toName,
     subject,
     body,
-    html
+    html,
+    attachments
   });
 
   // 5. Transmit via native SMTP
@@ -362,6 +431,7 @@ export async function sendEmail({ to, toName = "", subject, body, html = null, a
     messageId,
     recipient: to,
     subject,
+    attachments_count: attachments.length,
     timestamp: new Date().toISOString()
   };
 }

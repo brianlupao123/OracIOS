@@ -90,6 +90,45 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
     }), { status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED" });
   });
 
+  it("buildMimeMessage creates valid RFC 2045 multipart/mixed payload for PDF attachments", () => {
+    const pdfBuffer = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
+    const { messageId, payload } = buildMimeMessage({
+      from: "pilot@orac.test",
+      to: "lupaob1@gmail.com",
+      toName: "Client",
+      subject: "Quotation Q-001",
+      body: "Please find quotation attached.",
+      attachments: [{
+        filename: "quotation-Q-001.pdf",
+        contentType: "application/pdf",
+        content: pdfBuffer
+      }]
+    });
+    assert.ok(payload.includes("Content-Type: multipart/mixed; boundary="));
+    assert.ok(payload.includes("Content-Type: application/pdf; name=\"quotation-Q-001.pdf\""));
+    assert.ok(payload.includes("Content-Disposition: attachment; filename=\"quotation-Q-001.pdf\""));
+    assert.ok(payload.includes("Content-Transfer-Encoding: base64"));
+    assert.ok(payload.includes("JVBERi0xLjQ")); // %PDF-1.4 base64 prefix
+  });
+
+  it("sendEmail in dry-run mode accepts valid PDF attachment and records attachment metadata", async () => {
+    process.env.COMMUNICATIONS_DRY_RUN = "true";
+    const pdfBuffer = Buffer.from("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF");
+    const result = await sendEmail({
+      to: "lupaob1@gmail.com",
+      subject: "Quotation Q-001",
+      body: "Attached quotation",
+      attachments: [{
+        filename: "quotation-Q-001.pdf",
+        contentType: "application/pdf",
+        content: pdfBuffer
+      }]
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.mode, "dry-run");
+    assert.equal(result.attachments_count, 1);
+  });
+
   it("sendEmail refuses unlisted recipient with 403 before any network activity", async () => {
     await assert.rejects(
       async () => {

@@ -13,6 +13,7 @@ import {
   listQueueMessages, getCommunicationQueueStats, createQueueMessage,
   dispatchQueueMessage, cancelQueueMessage, retryQueueMessage
 } from "../../controllers/communicationsController.js";
+import { sendQuotationPdfEmail } from "../../services/quotationEmailService.js";
 
 const communicationsRouter = Router();
 
@@ -53,6 +54,25 @@ communicationsRouter.post("/communications/preview", guardCommunication, preview
 communicationsRouter.get("/communications/timeline/:entityType/:entityId", guardCommunication, getTimeline);
 communicationsRouter.post("/communications/evidence", guardCommunication, recordEvidence);
 communicationsRouter.post("/communications/record-external-send", guardCommunication, recordExternalSendEndpoint);
+communicationsRouter.post("/communications/send-quotation-pdf", guardCommunication, async (req, res) => {
+  try {
+    const actor = getActor(req);
+    const { quote_id, recipient_email, recipient_name, subject, body } = req.body;
+    const result = await sendQuotationPdfEmail({
+      quoteId: quote_id,
+      recipientEmail: recipient_email,
+      recipientName: recipient_name,
+      subject,
+      body,
+      actor,
+      store: req.store,
+      db: req.db
+    });
+    return res.status(200).json({ success: true, data: result });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message, code: err.code });
+  }
+});
 communicationsRouter.get("/communications/digest", (req, res, next) => {
   if (req.user?.role !== roles.ADMIN) return res.status(403).json({ success: false, message: "Admin access required." });
   next();
