@@ -38,11 +38,11 @@ export function normalizeEmail(email) {
 export function getAllowedRecipients() {
   const envAllowlist = process.env.CONTROLLED_RECIPIENT_ALLOWLIST;
   if (envAllowlist && typeof envAllowlist === "string") {
-    if (envAllowlist.trim() === "*") return ["*"];
     const list = envAllowlist
       .split(",")
       .map(e => normalizeEmail(e))
-      .filter(Boolean);
+      .filter(e => e && e !== "*");
+    if (envAllowlist.includes("*") && list.length === 0) return [];
     if (list.length > 0) return list;
   }
   return DEFAULT_CONTROLLED_RECIPIENTS.map(e => normalizeEmail(e));
@@ -55,7 +55,6 @@ export function isRecipientPermitted(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) return false;
   const allowed = getAllowedRecipients();
-  if (allowed.includes("*")) return true;
   return allowed.includes(normalized);
 }
 
@@ -68,7 +67,7 @@ export function getTransportConfig() {
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
   const user = process.env.SMTP_USER || "";
   const pass = process.env.SMTP_PASS || "";
-  const from = process.env.SMTP_FROM || process.env.EMAIL_FROM || "notifications@orac-systems.com";
+  const from = process.env.SMTP_FROM || process.env.EMAIL_FROM || user;
   const dryRun = process.env.COMMUNICATIONS_DRY_RUN !== "false";
   const isConfigured = Boolean(host && user && pass);
 
@@ -89,6 +88,17 @@ export function getTransportConfig() {
  * Builds an RFC 5322 compliant email message buffer.
  */
 export function buildMimeMessage({ from, to, toName, subject, body, html }) {
+  for (const [field, value] of Object.entries({ from, to, toName, subject })) {
+    if (typeof value !== "string" || /[\r\n\0]/.test(value)) {
+      throw Object.assign(new Error(`Invalid ${field} mail header`), { status: 400 });
+    }
+  }
+  if (typeof body !== "string") {
+    throw Object.assign(new Error("Invalid message body"), { status: 400 });
+  }
+  if (!/^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/.test(from)) {
+    throw Object.assign(new Error("SMTP_FROM must be a single bare email address"), { status: 400 });
+  }
   const messageId = `<${crypto.randomUUID()}@orac.system>`;
   const dateStr = new Date().toUTCString();
   const toHeader = toName ? `"${toName.replace(/"/g, "")}" <${to}>` : `<${to}>`;
@@ -106,7 +116,8 @@ export function buildMimeMessage({ from, to, toName, subject, body, html }) {
     `X-ORAC-Transport: controlled-pilot`
   ];
 
-  const payload = `${headers.join("\r\n")}\r\n\r\n${body.replace(/\r?\n/g, "\r\n")}\r\n`;
+  const safeBody = body.replace(/\r?\n/g, "\r\n").replace(/(^|\r\n)\./g, "$1..");
+  const payload = `${headers.join("\r\n")}\r\n\r\n${safeBody}\r\n`;
   return { messageId, payload };
 }
 
@@ -161,13 +172,16 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
             break;
 
           case 1: // Response to EHLO
-            if (!secure && reply.includes("STARTTLS")) {
+            if (!secure && /(?:^|\r\n)250[ -]STARTTLS(?:\r\n|$)/i.test(reply)) {
               step = 2;
               socket.write(`STARTTLS\r\n`);
-            } else {
-              // Direct auth
+            } else if (secure) {
               step = 4;
               socket.write(`AUTH LOGIN\r\n`);
+            } else {
+              cleanup();
+              clearTimeout(timer);
+              reject(new Error("SMTP server did not offer STARTTLS; refusing plaintext authentication"));
             }
             break;
 
@@ -277,6 +291,11 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
 export async function sendEmail({ to, toName = "", subject, body, html = null, attachments = [] }) {
   if (!to) {
     throw Object.assign(new Error("Recipient email is required"), { status: 400 });
+  }
+  if (attachments.length > 0) {
+    throw Object.assign(new Error("Email attachments are not supported by this transport"), {
+      status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED"
+    });
   }
 
   // 1. Strict recipient allowlist validation

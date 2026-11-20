@@ -45,6 +45,12 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
     assert.equal(isRecipientPermitted("lupaob1@gmail.com"), false);
   });
 
+  it("rejects a wildcard allowlist rather than opening delivery to everyone", () => {
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "*";
+    assert.deepEqual(getAllowedRecipients(), []);
+    assert.equal(isRecipientPermitted("stranger@example.com"), false);
+  });
+
   it("buildMimeMessage creates valid RFC 5322 formatted message", () => {
     const { messageId, payload } = buildMimeMessage({
       from: "notifications@orac-systems.com",
@@ -59,6 +65,29 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
     assert.ok(payload.includes('To: "Pilot Client" <lupaob1@gmail.com>'));
     assert.ok(payload.includes("Subject: Quotation QT-PILOT-01"));
     assert.ok(payload.includes("Please find quote attached."));
+  });
+
+  it("rejects header injection and dot-stuffs body lines", () => {
+    assert.throws(() => buildMimeMessage({
+      from: "pilot@orac.test", to: "lupaob1@gmail.com", toName: "Client",
+      subject: "Quote\r\nBcc: attacker@example.com", body: "Hello"
+    }), { status: 400 });
+    const { payload } = buildMimeMessage({
+      from: "pilot@orac.test", to: "lupaob1@gmail.com", toName: "Client",
+      subject: "Quote", body: "Hello\n.\nNext line"
+    });
+    assert.ok(payload.includes("Hello\r\n..\r\nNext line"));
+    assert.throws(() => buildMimeMessage({
+      from: "ORAC <pilot@orac.test>", to: "lupaob1@gmail.com", toName: "Client",
+      subject: "Quote", body: "Hello"
+    }), { status: 400 });
+  });
+
+  it("refuses attachments instead of claiming an email was sent without them", async () => {
+    await assert.rejects(sendEmail({
+      to: "lupaob1@gmail.com", subject: "Quote", body: "Attached quote",
+      attachments: [{ filename: "quote.pdf", content: "placeholder" }]
+    }), { status: 422, code: "EMAIL_ATTACHMENTS_UNSUPPORTED" });
   });
 
   it("sendEmail refuses unlisted recipient with 403 before any network activity", async () => {
@@ -116,8 +145,7 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
     );
   });
 
-  it("sendEmail successfully communicates with a live mock SMTP server", async () => {
-    // Spin up an in-process RFC-compliant mock SMTP server
+  it("refuses plaintext SMTP authentication when STARTTLS is unavailable", async () => {
     const serverTranscript = [];
 
     const server = net.createServer((socket) => {
@@ -173,29 +201,13 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
       process.env.SMTP_PASS = "pilot_pass";
       process.env.SMTP_FROM = "pilot@orac-systems.com";
 
-      const result = await sendEmail({
-        to: "Lupaobrian98@gmail.com",
-        toName: "Brian Lupao",
-        subject: "Pilot Verification Email",
-        body: "This is a real SMTP conversation test."
-      });
-
-      assert.equal(result.success, true);
-      assert.equal(result.mode, "live-smtp");
-      assert.equal(result.recipient, "Lupaobrian98@gmail.com");
-
-      // Allow tick for mock server to process QUIT command
-      await new Promise((r) => setTimeout(r, 20));
-
-      // Verify the SMTP server received the full protocol sequence
+      await assert.rejects(sendEmail({
+        to: "Lupaobrian98@gmail.com", subject: "Pilot Verification Email", body: "Hello"
+      }), /did not offer STARTTLS/);
       assert.ok(serverTranscript.some((l) => l.startsWith("EHLO")));
-      assert.ok(serverTranscript.includes("AUTH LOGIN"));
-      assert.ok(serverTranscript.includes("MAIL FROM:<pilot@orac-systems.com>"));
-      assert.ok(serverTranscript.includes("RCPT TO:<Lupaobrian98@gmail.com>"));
-      assert.ok(serverTranscript.includes("DATA"));
-      assert.ok(serverTranscript.some((l) => l.includes("This is a real SMTP conversation test.")));
-      assert.ok(serverTranscript.includes("."));
-      assert.ok(serverTranscript.includes("QUIT"));
+      assert.equal(serverTranscript.includes("AUTH LOGIN"), false);
+      assert.equal(serverTranscript.includes(Buffer.from("pilot_user").toString("base64")), false);
+      assert.equal(serverTranscript.includes(Buffer.from("pilot_pass").toString("base64")), false);
     } finally {
       await new Promise((res) => server.close(res));
     }

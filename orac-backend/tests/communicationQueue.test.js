@@ -34,7 +34,7 @@ describe("Communication Queue Service (Batch 2)", () => {
 
   beforeEach(() => {
     process.env.COMMUNICATIONS_DRY_RUN = "true"; // Explicit dry-run
-    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "*"; // Unit test permissive allowlist
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "a@b.com,client@example.com";
     db = makeDb();
     store = makeStore();
   });

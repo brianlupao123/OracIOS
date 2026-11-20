@@ -49,7 +49,7 @@ The following variables are documented in `docs/ORAC_REDACTED_CONFIGURATION_REGI
 | `SMTP_SECURE` | Boolean string | `"false"` | Direct TLS socket switch (true for 465, false for 587). |
 | `SMTP_USER` | Email address | *Redacted* | Authenticating sender mailbox user. |
 | `SMTP_PASS` | Secret string | *Redacted* | Mailbox provider App Password / token. |
-| `SMTP_FROM` | RFC 5322 string | `"ORAC Industrial Services <no-reply@localhost>"` | Outbound sender display and email header. |
+| `SMTP_FROM` | Bare sender email address | Defaults to `SMTP_USER` | SMTP envelope sender and From header. Display names and angle brackets are not accepted. |
 | `SMTP_CONNECTION_TIMEOUT_MS` | Integer ms | `10000` | Socket connection & handshake timeout (10s). |
 
 ---
@@ -73,7 +73,7 @@ Before setting `COMMUNICATIONS_DRY_RUN=false` for live internal delivery testing
      SMTP_SECURE="false" \
      SMTP_USER="<SENDER_EMAIL_ADDRESS>" \
      SMTP_PASS="<16_CHAR_APP_PASSWORD>" \
-     SMTP_FROM="ORAC Industrial Services <<SENDER_EMAIL_ADDRESS>>" \
+ SMTP_FROM="<SENDER_EMAIL_ADDRESS>" \
      COMMUNICATIONS_DRY_RUN="false" \
      CONTROLLED_RECIPIENT_ALLOWLIST="Lupaobrian98@gmail.com,brianwabwile79@gmail.com,lupaob1@gmail.com"
    ```
