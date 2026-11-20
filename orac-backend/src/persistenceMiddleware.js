@@ -1,6 +1,10 @@
 // A few GET requests must leave a persisted audit row (who opened a Daily Time Sheet or the review
-// queue). Ordinary GETs never write, so these exact paths opt in to the write path.
-const AUDITED_READS = [/^\/document-data\/daily_timesheets\/[^/]+$/, /^\/daily-timesheet-review-queue$/];
+// queue, or downloaded a Pastel review export). Ordinary GETs never write, so these exact paths opt in to the write path.
+const AUDITED_READS = [
+  /^\/document-data\/daily_timesheets\/[^/]+$/,
+  /^\/daily-timesheet-review-queue$/,
+  /^\/exports\/pastel(?:\.csv|-review\/.*)?$/
+];
 const isAuditedRead = (req) => req.method === "GET" && AUDITED_READS.some((re) => re.test(req.path));
 
 export function persistenceMiddleware(store) {

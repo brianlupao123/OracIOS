@@ -1,4 +1,9 @@
 import crypto from "node:crypto";
+import {
+  sendEmail,
+  isRecipientPermitted,
+  getTransportConfig
+} from "./communicationTransportService.js";
 
 /**
  * Communication Queue Service — Batch 2 of 4.
@@ -92,6 +97,20 @@ export function processMessage({ messageId, userId, store, db }) {
     throw Object.assign(new Error(`Cannot process a message with status '${msg.status}'`), { status: 409 });
   }
 
+  // Check recipient allowlist safety gate ALWAYS (both dry-run and live)
+  if (!isRecipientPermitted(msg.recipient_email)) {
+    const errorMsg = `Safety Refusal: Recipient '${msg.recipient_email}' is outside the controlled pilot allowlist.`;
+    msg.status = "Failed";
+    msg.last_error = errorMsg;
+    msg.failed_at = new Date().toISOString();
+    store.audit(db, { id: userId }, "communication_queue", msg.id,
+      "MESSAGE_REFUSED_SAFETY_ALLOWLIST", {
+        recipient_email: msg.recipient_email,
+        reason: errorMsg
+      });
+    throw Object.assign(new Error(errorMsg), { status: 403, code: "RECIPIENT_NOT_ALLOWED" });
+  }
+
   if (isDryRun()) {
     // DRY RUN: mark as dispatched without sending
     msg.status = "Dispatched";
@@ -109,12 +128,44 @@ export function processMessage({ messageId, userId, store, db }) {
     return msg;
   }
 
-  // LIVE MODE: This is where Batch 3 transport would be called.
-  // For now, fail with a clear message since no transport is configured.
-  throw Object.assign(
-    new Error("Live sending is not configured. Set COMMUNICATIONS_DRY_RUN=false only after Batch 3 transport is implemented."),
-    { status: 503 }
-  );
+  // LIVE MODE: Check configuration first
+  const config = getTransportConfig();
+  if (!config.isConfigured) {
+    throw Object.assign(
+      new Error("Live sending is not configured. Configure SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) before setting COMMUNICATIONS_DRY_RUN=false."),
+      { status: 503 }
+    );
+  }
+
+  // Return a promise for the live sending operation
+  return (async () => {
+    try {
+      const sendResult = await sendEmail({
+        to: msg.recipient_email,
+        toName: msg.recipient_name,
+        subject: msg.subject,
+        body: msg.body,
+        attachments: msg.attachments
+      });
+
+      msg.status = "Dispatched";
+      msg.dispatched_at = new Date().toISOString();
+      msg.dry_run = false;
+      msg.provider_message_id = sendResult.messageId;
+
+      store.audit(db, { id: userId }, "communication_queue", msg.id,
+        "MESSAGE_DISPATCHED_LIVE", {
+          subject: msg.subject,
+          recipient_email: msg.recipient_email,
+          provider_message_id: sendResult.messageId
+        });
+
+      return msg;
+    } catch (err) {
+      failMessage({ messageId: msg.id, error: err.message, userId, store, db });
+      throw err;
+    }
+  })();
 }
 
 /**

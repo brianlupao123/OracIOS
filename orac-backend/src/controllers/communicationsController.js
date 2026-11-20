@@ -6,6 +6,10 @@ import {
   getEntityCommunicationTimeline, getEntityCommunicationStats,
   recordCommunicationEvidence, recordExternalSend, buildChaseDigest
 } from "../services/communicationAuditService.js";
+import {
+  createMessage, queueMessage, processMessage, failMessage,
+  retryMessage, cancelMessage, listQueuedMessages, getQueueStats, getMessageById
+} from "../services/communicationQueueService.js";
 
 /**
  * Communication Preview Controller — Batch 1 of 4.
@@ -188,3 +192,88 @@ export function getDigest(req, res) {
     return res.status(err.status || 500).json({ success: false, message: err.message });
   }
 }
+
+// ── Queue Management Endpoints ──────────────────────────────────────
+
+// GET /api/communications/queue — list queued messages
+export function listQueueMessages(req, res) {
+  return res.json({ success: true, messages: listQueuedMessages({ db: req.db }) });
+}
+
+// GET /api/communications/queue/stats — queue statistics
+export function getCommunicationQueueStats(req, res) {
+  return res.json({ success: true, stats: getQueueStats({ db: req.db }) });
+}
+
+// POST /api/communications/queue — create (and optionally queue) a message
+export function createQueueMessage(req, res) {
+  try {
+    const { template_name, subject, body, recipient_email, recipient_name, entity_type, entity_id, attachments, auto_queue } = req.body;
+    const msg = createMessage({
+      templateName: template_name,
+      subject,
+      body,
+      recipientEmail: recipient_email,
+      recipientName: recipient_name,
+      entityType: entity_type,
+      entityId: entity_id,
+      attachments,
+      createdBy: req.user?.id || "system",
+      store: req.store,
+      db: req.db
+    });
+    if (auto_queue === true) {
+      queueMessage({ messageId: msg.id, userId: req.user?.id || "system", store: req.store, db: req.db });
+    }
+    return res.status(201).json({ success: true, message: msg });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+// POST /api/communications/queue/:id/dispatch — dispatch a queued message
+export async function dispatchQueueMessage(req, res) {
+  try {
+    const msg = await processMessage({
+      messageId: req.params.id,
+      userId: req.user?.id || "system",
+      store: req.store,
+      db: req.db
+    });
+    return res.json({ success: true, message: msg });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+// POST /api/communications/queue/:id/cancel — cancel a message
+export function cancelQueueMessage(req, res) {
+  try {
+    const msg = cancelMessage({
+      messageId: req.params.id,
+      reason: req.body.reason,
+      userId: req.user?.id || "system",
+      store: req.store,
+      db: req.db
+    });
+    return res.json({ success: true, message: msg });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+// POST /api/communications/queue/:id/retry — retry a failed message
+export function retryQueueMessage(req, res) {
+  try {
+    const msg = retryMessage({
+      messageId: req.params.id,
+      userId: req.user?.id || "system",
+      store: req.store,
+      db: req.db
+    });
+    return res.json({ success: true, message: msg });
+  } catch (err) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
