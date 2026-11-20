@@ -1,12 +1,15 @@
 // backend/tests/postgresIntegrationEvidence.test.js
 //
-// ORAC Production Remediation - Isolated PostgreSQL Integration Evidence
+// ORAC Production Remediation - Simulated PostgreSQL-Store Integration Evidence (Transaction-Pool Simulator)
 //
-// Verifies real transactional persistence across distinct PostgreSQL connections
-// using the production postgresStore engine:
-// 1. Inventory audit failure rollback (no ghost state across PG connection restart)
+// NOTE: This suite validates postgresStore transaction lifecycle, concurrency locking,
+// and rollback semantics against an in-process transaction-pool simulator.
+// It is local simulation evidence, NOT real PostgreSQL database proof.
+// For real PostgreSQL database proof against a live instance, see tests/postgresRealRehearsal.test.js.
+//
+// 1. Inventory audit failure rollback (no ghost state across simulated reconnect)
 // 2. Sensitive technician payment encryption at rest, audited Finance/Admin read, and non-Finance denial
-// 3. Sales portfolio multi-tenant isolation across new connection
+// 3. Sales portfolio multi-tenant isolation across simulated connection
 // 4. Client Viewer projection allowlist and cross-client refusal
 // 5. Verified-PO dispatch gate (refusal on unverified PO, success on verified PO)
 // 6. Critical audit events persistence across fresh connection
@@ -132,10 +135,10 @@ function baseDatabase() {
   };
 }
 
-describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
+describe("A1/A4/A8/A9: Simulated PostgreSQL-Store Integration Evidence Matrix (Transaction-Pool Simulator)", () => {
   const BASE64_KEY = crypto.randomBytes(32).toString("base64");
 
-  test("1. PostgreSQL: Inventory audit failure cleanly rolls back stock and movement (no ghost state after reconnect)", async () => {
+  test("1. Simulated PostgreSQL: Inventory audit failure cleanly rolls back stock and movement (no ghost state after reconnect)", async () => {
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
 
@@ -190,7 +193,7 @@ describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
     assert.equal(freshDb.stock_movements.length, 0, "PostgreSQL database contains zero ghost movements");
   });
 
-  test("2. PostgreSQL: Sensitive payment encryption at rest, audited Finance read, and role refusal across new connection", async () => {
+  test("2. Simulated PostgreSQL: Sensitive payment encryption at rest, audited Finance read, and role refusal across new connection", async () => {
     process.env.ORAC_PAYMENT_ENCRYPTION_KEY = BASE64_KEY;
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
@@ -256,7 +259,7 @@ describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
     assert.equal(JSON.stringify(accessAudit).includes("87002938475"), false, "Audit payload redacts payment details");
   });
 
-  test("3. PostgreSQL: Sales portfolio multi-tenant isolation persists across fresh connection", async () => {
+  test("3. Simulated PostgreSQL: Sales portfolio multi-tenant isolation persists across fresh connection", async () => {
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
 
@@ -305,7 +308,7 @@ describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
     assert.equal(isDispatchInSalesPortfolio(dispB, actorSalesA, freshDb), false, "Sales A CANNOT see dispatch B");
   });
 
-  test("4. PostgreSQL: Client Viewer allowlist strips internal secrets and refuses cross-client data", async () => {
+  test("4. Simulated PostgreSQL: Client Viewer allowlist strips internal secrets and refuses cross-client data", async () => {
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
 
@@ -360,7 +363,7 @@ describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
     assert.notEqual(quoteB.client_id, clientAActor.client_id, "Client Viewer for A is refused for Client B data");
   });
 
-  test("5. PostgreSQL: Verified-PO dispatch gate blocks unverified PO and succeeds once verified", async () => {
+  test("5. Simulated PostgreSQL: Verified-PO dispatch gate blocks unverified PO and succeeds once verified", async () => {
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
 
@@ -402,7 +405,7 @@ describe("A1/A4/A8/A9: PostgreSQL Integration Evidence Matrix", () => {
     assert.equal(clearedBlock, null, "Dispatch gate clears once PO is verified in PostgreSQL");
   });
 
-  test("6. PostgreSQL: Critical audit events persist intact after new connection", async () => {
+  test("6. Simulated PostgreSQL: Critical audit events persist intact after new connection", async () => {
     const pool = createIsolatedPostgresPool(baseDatabase());
     const store = createStore(":memory:", pool);
 
