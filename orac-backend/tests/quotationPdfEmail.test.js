@@ -115,6 +115,50 @@ describe("Scoped Quotation PDF Email Action", () => {
     );
   });
 
+  it("permits all three approved allowlist addresses and refuses an unlisted address", async () => {
+    process.env.COMMUNICATIONS_DRY_RUN = "true";
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "lupaobrian98@gmail.com,brianwabwile79@gmail.com,lupaob1@gmail.com";
+    const actor = { id: "usr_sales_1", role: roles.SALES, is_active: true };
+
+    const approvedRecipients = [
+      "lupaobrian98@gmail.com",
+      "brianwabwile79@gmail.com",
+      "lupaob1@gmail.com"
+    ];
+
+    for (const recipient of approvedRecipients) {
+      const result = await sendQuotationPdfEmail({
+        quoteId: "q_test_101",
+        recipientEmail: recipient,
+        recipientName: "Approved Tester",
+        actor,
+        store: mockStore,
+        db
+      });
+      assert.equal(result.success, true);
+      assert.equal(result.recipientEmail, recipient);
+      assert.ok(result.pdfSha256);
+    }
+
+    // Unlisted address must be refused
+    await assert.rejects(
+      async () => {
+        await sendQuotationPdfEmail({
+          quoteId: "q_test_101",
+          recipientEmail: "unlisted@outside-allowlist.test",
+          actor,
+          store: mockStore,
+          db
+        });
+      },
+      (err) => {
+        assert.equal(err.status, 403);
+        assert.equal(err.code, "RECIPIENT_NOT_ALLOWED");
+        return true;
+      }
+    );
+  });
+
   it("sendQuotationPdfEmail strictly requires sendQuote permission", async () => {
     const actor = { id: "usr_tech_1", role: roles.TECHNICIAN, is_active: true };
     await assert.rejects(

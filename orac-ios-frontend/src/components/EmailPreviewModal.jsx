@@ -13,7 +13,8 @@ export default function EmailPreviewModal({
   docType = "Document",
   onConfirmSend,
   onDownloadDocument,
-  confirmLabel = "I sent the email with the PDF"
+  confirmLabel = "Send quotation email via ORAC",
+  directSend = true
 }) {
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -59,13 +60,14 @@ export default function EmailPreviewModal({
   }
 
   async function handleConfirmSent() {
-    if (!copied || !downloaded || !hasRecipient) return;
+    if (!hasRecipient) return;
+    if (!directSend && (!copied || !downloaded)) return;
     setSubmitting(true);
     setError("");
     try {
       await onConfirmSend();
     } catch (err) {
-      setError(err.message || "Could not record the external send.");
+      setError(err.message || (directSend ? "Could not send quotation email." : "Could not record the external send."));
     } finally {
       setSubmitting(false);
     }
@@ -79,15 +81,25 @@ export default function EmailPreviewModal({
       size="xl"
     >
       <div className="space-y-4 text-ux-body" data-evidence="email-preview-modal">
-        {/* External email workflow: the user must perform the send in their mail app. */}
-        <div className="rounded-lg border border-orac-warning-border bg-orac-warning-bg p-4 text-orac-warning-text shadow-xs">
-          <div className="flex items-center gap-2 font-bold text-orac-warning-text">
-            <span>Manual email preparation — ORAC has not sent this message</span>
+        {directSend ? (
+          <div className="rounded-lg border border-orac-border-default bg-orac-surface p-4 text-orac-text-primary shadow-xs">
+            <div className="flex items-center gap-2 font-bold text-orac-blue">
+              <span>Quotation Email Dispatch — Direct SMTP Delivery</span>
+            </div>
+            <p className="mt-1 text-ux-caption text-orac-text-secondary leading-relaxed">
+              When confirmed, ORAC will attach the generated controlled PDF and dispatch the email directly via SMTP to the allowlisted recipient.
+            </p>
           </div>
-          <p className="mt-1 text-ux-caption text-orac-warning-text leading-relaxed">
-            Download the quotation PDF, copy this email draft, attach the PDF in your mail app, and send it there. Confirm below only after sending.
-          </p>
-        </div>
+        ) : (
+          <div className="rounded-lg border border-orac-warning-border bg-orac-warning-bg p-4 text-orac-warning-text shadow-xs">
+            <div className="flex items-center gap-2 font-bold text-orac-warning-text">
+              <span>Manual email preparation — ORAC has not sent this message</span>
+            </div>
+            <p className="mt-1 text-ux-caption text-orac-warning-text leading-relaxed">
+              Download the quotation PDF, copy this email draft, attach the PDF in your mail app, and send it there. Confirm below only after sending.
+            </p>
+          </div>
+        )}
 
         <div>
           <label className="block text-ux-caption font-semibold uppercase tracking-wider text-orac-text-secondary mb-1">
@@ -118,7 +130,7 @@ export default function EmailPreviewModal({
           </div>
         </div>
 
-        {(copied || downloaded) && (
+        {!directSend && (copied || downloaded) && (
           <div className="rounded-md border border-orac-success-border bg-orac-success-bg p-2 text-ux-caption font-semibold text-orac-success-text">
             {downloaded ? "PDF downloaded. " : ""}{copied ? "Draft copied. " : ""}The quote is still Draft until you confirm the external send.
           </div>
@@ -134,8 +146,12 @@ export default function EmailPreviewModal({
           </Button>
           {onDownloadDocument && <Button variant="secondary" disabled={submitting} onClick={handleDownload}>Download quotation PDF</Button>}
           <Button variant="secondary" disabled={submitting || !hasRecipient} onClick={handleCopy}>Copy email draft</Button>
-          <Button variant="primary" disabled={submitting || !copied || !downloaded || !hasRecipient} onClick={handleConfirmSent}>
-            {submitting ? "Processing..." : confirmLabel}
+          <Button
+            variant="primary"
+            disabled={submitting || !hasRecipient || (!directSend && (!copied || !downloaded))}
+            onClick={handleConfirmSent}
+          >
+            {submitting ? (directSend ? "Transmitting email..." : "Processing...") : confirmLabel}
           </Button>
         </div>
       </div>

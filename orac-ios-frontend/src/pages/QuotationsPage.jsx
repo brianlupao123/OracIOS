@@ -302,21 +302,41 @@ export default function QuotationsPage({ user }) {
     try {
       const client = clients.find((c) => c.id === quote.client_id);
       const recipientEmail = client?.email || client?.contact_email;
-      if (!recipientEmail) throw new Error("Add a client email address before recording a send.");
-      await communications.recordExternalSend({
-        business_record_type: "quote",
-        business_record_id: quote.id,
+      if (!recipientEmail) throw new Error("Add a client email address before sending quotation.");
+
+      const subject = `ORAC Quotation ${quote.quote_number || quote.id} — ${clientName(quote.client_id)}`;
+      const body = [
+        `Dear ${clientName(quote.client_id)},`,
+        "",
+        `Please find attached Quotation ${quote.quote_number || quote.id} for your review.`,
+        "",
+        quote.scope_summary ? `Scope: ${quote.scope_summary}` : "",
+        `Validity: ${quote.validity_days || 30} days from issue date.`,
+        "",
+        "Should you have any queries or require further clarification, please do not hesitate to contact us.",
+        "",
+        "Kind regards,",
+        "ORAC Systems (Pvt) Ltd",
+        "Industrial Equipment Solutions"
+      ].filter(Boolean).join("\n");
+
+      // Transmit directly via backend SMTP endpoint with generated quotation PDF
+      const sendResult = await communications.sendQuotationPdf({
+        quote_id: quote.id,
         recipient_email: recipientEmail,
         recipient_name: client?.name || quote.client_name || "",
-        subject: `ORAC Quotation ${quote.quote_number || quote.id}`,
-        notes: "User confirmed sending the downloaded quotation PDF through an external mail app."
+        subject,
+        body
       });
+
+      // ONLY transition quote to "Sent" after backend confirms SMTP acceptance
       await quotesApi.transition(quote.id, "Sent");
       setEmailPreviewQuote(null);
-      setNotice(`${quote.quote_number || quote.id} was recorded as sent through your mail app.`);
+      const modeDesc = sendResult?.mode === "live-smtp" ? "Live SMTP relay" : "Direct send (dry-run mode)";
+      setNotice(`${quote.quote_number || quote.id} was dispatched to ${recipientEmail} via ${modeDesc} (Message ID: ${sendResult?.messageId || "accepted"}). Note: Actual inbox receipt is verified separately.`);
       await load();
     } catch (err) {
-      setError(err.message);
+      setError(err.message || "Failed to send quotation email.");
       throw err;
     } finally {
       setBusyId("");
@@ -902,7 +922,8 @@ export default function QuotationsPage({ user }) {
         docType="Quotation"
         onDownloadDocument={() => documents.download("quotes", emailPreviewQuote.id)}
         onConfirmSend={confirmSendQuote}
-        confirmLabel="I sent the email with the PDF"
+        confirmLabel="Send quotation email via ORAC"
+        directSend={true}
       />
     </div>
   );
