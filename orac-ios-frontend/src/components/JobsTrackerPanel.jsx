@@ -83,7 +83,7 @@ export default function JobsTrackerPanel({ user }) {
 
   const list = jobs || [];
   const waitingPo = list.filter((r) => r.status === "Waiting_For_PO" || r.status === "Approved_Pending_PO").length;
-  const wip = list.filter((r) => r.status === "WIP" || r.status === "Field_Dispatch").length;
+  const wip = list.filter((r) => r.status === "WIP" || r.status === "Field_Dispatch" || r.status === "Paid_WIP").length;
   const readyInvoice = list.filter((r) => r.status === "Ready_For_Invoice" || r.status === "Ready_To_Prepare_Invoice").length;
   const invoiced = list.filter((r) => r.status === "Invoiced" || r.status === "Completed" || r.status === "Settled").length;
   const totalActualHours = list.reduce((sum, r) => sum + Number(r.actual_field_hours ?? r.actual_hours ?? 0), 0);

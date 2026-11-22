@@ -84,88 +84,125 @@ export function getJobTracker(req, res) {
       (quoteDispatches.length > 0 && quoteDispatches.some((d) => d.id === inv.dispatch_card_id))
     );
 
-    const dispatchList = quoteDispatches.length > 0 ? quoteDispatches : [null];
+    const nonVoidInvoices = quoteInvoices.filter((inv) => String(inv.status || "").toLowerCase() !== "voided");
 
-    for (const dispatch of dispatchList) {
-      let status = "Waiting_For_PO";
-      let stage = "Waiting for Client PO";
-
-      const dispatchInvoices = dispatch
-        ? quoteInvoices.filter((inv) => inv.dispatch_card_id === dispatch.id || !inv.dispatch_card_id)
-        : quoteInvoices;
-
-      const nonVoidInvoices = dispatchInvoices.filter((inv) => String(inv.status || "").toLowerCase() !== "voided");
-
-      if (nonVoidInvoices.length > 0) {
-        const allSettled = nonVoidInvoices.every((inv) => {
-          const s = String(inv.status || "").toLowerCase();
-          return s === "settled" || s === "paid";
-        });
-        if (allSettled) {
-          status = "Completed";
-          stage = "Completed";
-        } else {
-          status = "Invoiced";
-          stage = "Invoiced";
-        }
-      } else if (dispatch && isPoVerified) {
-        const isReadyForInvoice = invoiceReadinessBlock(db, dispatch) === null;
-        if (isReadyForInvoice) {
-          status = "Ready_For_Invoice";
-          stage = "Ready to prepare invoice";
-        } else {
-          status = "WIP";
-          stage = "Work in Progress (WIP)";
-        }
-      } else if (quote.status === "Approved_Pending_PO") {
-        status = "Approved_Pending_PO";
-        stage = "Waiting for Client PO";
-      } else if (quote.status === "Sent") {
-        status = "Sent";
-        stage = "Sent (Awaiting Client Approval)";
-      } else {
-        status = quote.status || "Pending";
-        stage = quote.status || "Pending";
-      }
-
-      const actuals = dispatch ? jobActuals(db, dispatch.id) : { total: 0, normal: 0, ot_15: 0, ot_20: 0 };
-
-      const commercialOwner = quote.sales_owner_id
-        ? (userMap.get(quote.sales_owner_id) || quote.sales_owner_id)
-        : "Unassigned";
-
-      const siteName = quote.mine_site_id ? (siteMap.get(quote.mine_site_id) || "") : "";
-
-      jobs.push({
-        id: dispatch ? dispatch.id : `quote_${quote.id}`,
-        quote_id: quote.id,
-        quote_number: quote.quote_number,
-        client_id: quote.client_id,
-        client_name: clientMap.get(quote.client_id) || quote.client_id || "",
-        site_id: quote.mine_site_id || null,
-        site_name: siteName,
-        status,
-        stage,
-        po_number: po?.po_number || po?.po_reference || "Not captured",
-        po_status: po ? (isPoVerified ? "Verified" : "Pending_Verification") : "No_PO",
-        client_pr: quote.client_pr_number || quote.client_pr || "Not captured",
-        planned_start: dispatch?.scheduled_start || "Not captured",
-        actual_start: dispatch?.actual_start || "Not captured",
-        completion_record: dispatch?.completion_record || dispatch?.completed_at || "Not captured",
-        dispatch_id: dispatch?.id || null,
-        dispatch_number: dispatch?.dispatch_number || null,
-        actual_hours: actuals.total,
-        actual_hours_breakdown: {
-          normal: actuals.normal,
-          ot_15: actuals.ot_15,
-          ot_20: actuals.ot_20
-        },
-        commercial_owner: commercialOwner,
-        sales_owner_id: quote.sales_owner_id || null,
-        created_at: dispatch?.created_at || quote.created_at,
-        updated_at: quote.updated_at || quote.created_at
-      });
+    // Aggregate actual hours across all quote dispatches
+    let totalActuals = { total: 0, normal: 0, ot_15: 0, ot_20: 0 };
+    for (const d of quoteDispatches) {
+      const a = jobActuals(db, d.id);
+      totalActuals.total += a.total;
+      totalActuals.normal += a.normal;
+      totalActuals.ot_15 += a.ot_15;
+      totalActuals.ot_20 += a.ot_20;
     }
+
+    // Work completion: derived strictly from explicit completion records
+    const hasDispatches = quoteDispatches.length > 0;
+    const allDispatchesCompleted = hasDispatches && quoteDispatches.every((d) =>
+      Boolean(d.completion_record || d.completed_at || String(d.status || "").toLowerCase() === "completed")
+    );
+    const workStatus = !hasDispatches
+      ? "Not_Started"
+      : (allDispatchesCompleted ? "Completed" : "WIP");
+
+    // Invoice status: derived strictly from invoice history
+    const allSettled = nonVoidInvoices.length > 0 && nonVoidInvoices.every((inv) => {
+      const s = String(inv.status || "").toLowerCase();
+      return s === "settled" || s === "paid";
+    });
+    const invoiceStatus = allSettled
+      ? "Settled"
+      : (nonVoidInvoices.length > 0
+        ? "Invoiced"
+        : (hasDispatches && isPoVerified && quoteDispatches.some((d) => invoiceReadinessBlock(db, d) === null)
+          ? "Ready_For_Invoice"
+          : "Unbilled"));
+
+    // Stage & display status: preserve backwards compatibility while decoupling work completion from payment
+    let status = "Waiting_For_PO";
+    let stage = "Waiting for Client PO";
+
+    if (allSettled) {
+      if (allDispatchesCompleted) {
+        status = "Completed";
+        stage = "Completed";
+      } else {
+        status = "Paid_WIP";
+        stage = "Settled (Field Work Incomplete)";
+      }
+    } else if (nonVoidInvoices.length > 0) {
+      status = "Invoiced";
+      stage = "Invoiced";
+    } else if (invoiceStatus === "Ready_For_Invoice") {
+      status = "Ready_For_Invoice";
+      stage = "Ready to prepare invoice";
+    } else if (hasDispatches && isPoVerified) {
+      status = "WIP";
+      stage = "Work in Progress (WIP)";
+    } else if (quote.status === "Approved_Pending_PO") {
+      status = "Approved_Pending_PO";
+      stage = "Waiting for Client PO";
+    } else if (quote.status === "Sent") {
+      status = "Sent";
+      stage = "Sent (Awaiting Client Approval)";
+    } else {
+      status = quote.status || "Pending";
+      stage = quote.status || "Pending";
+    }
+
+    const primaryDispatch = quoteDispatches[0] || null;
+    const plannedStart = quoteDispatches.map((d) => d.scheduled_start).filter(Boolean).sort()[0] || "Not captured";
+    const actualStart = quoteDispatches.map((d) => d.actual_start).filter(Boolean).sort()[0] || "Not captured";
+    const completionRecord = quoteDispatches.map((d) => d.completion_record || d.completed_at).filter(Boolean).join("; ") || "Not captured";
+
+    const commercialOwner = quote.sales_owner_id
+      ? (userMap.get(quote.sales_owner_id) || quote.sales_owner_id)
+      : "Unassigned";
+
+    const siteName = quote.mine_site_id ? (siteMap.get(quote.mine_site_id) || "") : "";
+
+    jobs.push({
+      id: primaryDispatch ? primaryDispatch.id : `quote_${quote.id}`,
+      quote_id: quote.id,
+      quote_number: quote.quote_number,
+      client_id: quote.client_id,
+      client_name: clientMap.get(quote.client_id) || quote.client_id || "",
+      site_id: quote.mine_site_id || null,
+      site_name: siteName,
+      status,
+      stage,
+      work_status: workStatus,
+      invoice_status: invoiceStatus,
+      payment_status: allSettled ? "Paid" : (nonVoidInvoices.length > 0 ? "Pending_Payment" : "Unbilled"),
+      po_number: po?.po_number || po?.po_reference || "Not captured",
+      po_status: po ? (isPoVerified ? "Verified" : "Pending_Verification") : "No_PO",
+      client_pr: quote.client_pr_number || quote.client_pr || "Not captured",
+      planned_start: plannedStart,
+      actual_start: actualStart,
+      completion_record: completionRecord,
+      dispatch_id: primaryDispatch?.id || null,
+      dispatch_number: quoteDispatches.map((d) => d.dispatch_number).filter(Boolean).join(", ") || null,
+      dispatches_count: quoteDispatches.length,
+      dispatches: quoteDispatches.map((d) => ({
+        id: d.id,
+        dispatch_number: d.dispatch_number,
+        status: d.status,
+        scheduled_start: d.scheduled_start || null,
+        actual_start: d.actual_start || null,
+        completion_record: d.completion_record || d.completed_at || null,
+        actual_hours: jobActuals(db, d.id).total
+      })),
+      actual_hours: totalActuals.total,
+      actual_hours_breakdown: {
+        normal: totalActuals.normal,
+        ot_15: totalActuals.ot_15,
+        ot_20: totalActuals.ot_20
+      },
+      commercial_owner: commercialOwner,
+      sales_owner_id: quote.sales_owner_id || null,
+      created_at: primaryDispatch?.created_at || quote.created_at,
+      updated_at: quote.updated_at || quote.created_at
+    });
   }
 
   // Stable order: descending by created_at
