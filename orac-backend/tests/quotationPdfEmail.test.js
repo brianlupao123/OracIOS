@@ -256,4 +256,102 @@ describe("Scoped Quotation PDF Email Action", () => {
       await new Promise((resolve) => server.close(resolve));
     }
   });
+
+  it("POST /api/communications/quotation-pdf-receipt endpoint verifies authenticated Sales success/refusal and 409 duplicate-receipt over HTTP", async () => {
+    // Add out-of-scope quote owned by another sales user
+    db.quotes.push({
+      id: "q_test_out_of_scope",
+      quote_number: "QT-2026-999",
+      client_id: "cli_freda",
+      status: "Draft",
+      sales_owner_id: "usr_sales_other",
+      total_amount: 500,
+      created_at: new Date().toISOString()
+    });
+
+    // Seed an accepted live-smtp send evidence record for q_test_101
+    const acceptedSendEv = {
+      id: "ev_accepted_live_1",
+      entity_type: "quote",
+      entity_id: "q_test_101",
+      send_kind: "quotation_pdf",
+      status: "accepted",
+      transport_mode: "live-smtp",
+      accepted_at: new Date().toISOString(),
+      recipient_email: "lupaob1@gmail.com",
+      recipient_name: "Freda Rebecca",
+      subject: "Quotation QT-2026-101",
+      recorded_by: "usr_sales_1",
+      sent_at: new Date().toISOString()
+    };
+    db.communication_evidence.push(acceptedSendEv);
+
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      const userId = req.headers["x-user-id"] || "usr_sales_1";
+      const user = db.users.find((u) => u.id === userId) || { id: userId, role: req.headers["x-test-role"] || roles.SALES, is_active: true };
+      req.user = user;
+      req.db = db;
+      req.store = mockStore;
+      next();
+    });
+    app.use("/api", communicationsRouter);
+
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise((resolve) => server.once("listening", resolve));
+    const port = server.address().port;
+
+    try {
+      // 1. Refusal: Sales attempts to confirm receipt for out-of-portfolio quote
+      const resRefused = await fetch(`http://127.0.0.1:${port}/api/communications/quotation-pdf-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-test-role": roles.SALES, "x-user-id": "usr_sales_1" },
+        body: JSON.stringify({
+          quote_id: "q_test_out_of_scope",
+          evidence_id: "ev_accepted_live_1",
+          method: "phone_call",
+          note: "Phone confirmation by site manager"
+        })
+      });
+      assert.equal(resRefused.status, 403);
+      const refusedJson = await resRefused.json();
+      assert.equal(refusedJson.code, "QUOTE_SCOPE_DENIED");
+
+      // 2. Success: Authenticated Sales confirms receipt for quote in its own portfolio
+      const resSuccess = await fetch(`http://127.0.0.1:${port}/api/communications/quotation-pdf-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-test-role": roles.SALES, "x-user-id": "usr_sales_1" },
+        body: JSON.stringify({
+          quote_id: "q_test_101",
+          evidence_id: "ev_accepted_live_1",
+          method: "recipient_reply_email",
+          note: "Client confirmed via email reply"
+        })
+      });
+      assert.equal(resSuccess.status, 201);
+      const successJson = await resSuccess.json();
+      assert.equal(successJson.success, true);
+      assert.equal(successJson.data.status, "receipt_confirmed");
+      assert.equal(successJson.data.sendEvidenceId, "ev_accepted_live_1");
+      assert.equal(successJson.data.method, "recipient_reply_email");
+
+      // 3. Duplicate path: Repeating receipt confirmation for same send returns 409 Conflict
+      const resDuplicate = await fetch(`http://127.0.0.1:${port}/api/communications/quotation-pdf-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-test-role": roles.SALES, "x-user-id": "usr_sales_1" },
+        body: JSON.stringify({
+          quote_id: "q_test_101",
+          evidence_id: "ev_accepted_live_1",
+          method: "recipient_reply_email",
+          note: "Duplicate receipt confirmation attempt"
+        })
+      });
+      assert.equal(resDuplicate.status, 409);
+      const dupJson = await resDuplicate.json();
+      assert.equal(dupJson.code, "RECEIPT_ALREADY_RECORDED");
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
