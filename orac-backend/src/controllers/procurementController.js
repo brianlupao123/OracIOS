@@ -98,6 +98,10 @@ export const approveProcurementRequest = (req, res) => {
       return res.status(409).json({ success: false, message: `Cannot ${action.toLowerCase()} PR in status '${pr.status}'` });
     }
 
+    if (pr.requested_by && pr.requested_by === actor.id) {
+      return res.status(403).json({ success: false, message: "Cannot approve or reject your own procurement request." });
+    }
+
     const before = JSON.parse(JSON.stringify(pr));
     const isApproved = action === "APPROVE";
 
@@ -135,11 +139,14 @@ export const createSupplierPo = (req, res) => {
 
     const val = parseResult.data;
 
-    // Verify supplier exists
+    // Verify supplier exists and is active
     req.db.suppliers = req.db.suppliers || [];
     const supplier = req.db.suppliers.find((s) => s.id === val.supplier_id);
     if (!supplier) {
       return res.status(404).json({ success: false, message: `Supplier '${val.supplier_id}' not found` });
+    }
+    if (supplier.is_active === false) {
+      return res.status(400).json({ success: false, message: `Cannot issue purchase order to inactive supplier '${supplier.name || supplier.id}'` });
     }
 
     // If linked to a PR, verify PR is approved
@@ -241,9 +248,25 @@ export const receiveGrn = (req, res) => {
         });
       }
 
+      const qtyReceived = Number(item.received_quantity) || 0;
+
+      // Check prior received quantities across previous GRNs for this PO to prevent over-receipt
+      const previouslyReceived = (req.db.goods_received_notes || [])
+        .filter((g) => g.supplier_po_id === po.id)
+        .reduce((sum, g) => {
+          const matching = (g.items || []).find((it) => it.item_code === item.item_code);
+          return sum + (Number(matching?.received_quantity) || 0);
+        }, 0);
+
+      if (previouslyReceived + qtyReceived > Number(poLine.quantity)) {
+        return res.status(400).json({
+          success: false,
+          message: `Over-receipt rejected for '${item.item_code}': Total received (${previouslyReceived + qtyReceived}) would exceed authorized PO quantity (${poLine.quantity})`
+        });
+      }
+
       // Update or find stock item in inventory
       let stockItem = req.db.stock_items.find((si) => si.item_code === item.item_code);
-      const qtyReceived = Number(item.received_quantity) || 0;
 
       if (!stockItem) {
         stockItem = {
@@ -308,8 +331,18 @@ export const receiveGrn = (req, res) => {
     req.db.goods_received_notes = req.db.goods_received_notes || [];
     req.db.goods_received_notes.push(grn);
 
-    // Update PO fulfillment state
-    po.status = "RECEIVED";
+    // Update PO fulfillment state: mark RECEIVED only when all lines are fully received; otherwise PARTIALLY_RECEIVED
+    const allGrns = req.db.goods_received_notes || [];
+    const isFullyReceived = (po.items || []).every((line) => {
+      const lineReceived = allGrns.reduce((sum, g) => {
+        if (g.supplier_po_id !== po.id) return sum;
+        const matching = (g.items || []).find((it) => it.item_code === line.item_code);
+        return sum + (Number(matching?.received_quantity) || 0);
+      }, 0);
+      return lineReceived >= Number(line.quantity);
+    });
+
+    po.status = isFullyReceived ? "RECEIVED" : "PARTIALLY_RECEIVED";
 
     req.store.audit(req.db, actor, "grn", grn.id, "GRN_RECEIVED", null, grn);
     return res.status(201).json({ success: true, data: grn });

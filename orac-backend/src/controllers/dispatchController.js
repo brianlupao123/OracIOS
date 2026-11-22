@@ -525,23 +525,48 @@ export const addMaterialUsage = (req, res) => {
   let stockResult = null;
   if (stockItem) {
     req.db.material_usage.push(usage);
-    stockResult = applyStockChange({
-      store: req.store,
-      db: req.db,
-      stockItem,
-      movementType: "out",
-      requestedQuantity: body.quantity_used,
-      reason: `Worksheet material usage - dispatch ${job.dispatch_number}`,
-      referenceId: usage.id,
-      referenceType: "material_usage",
-      overrideNegative: body.override_negative,
-      idempotencyKey: keyResult.key,
-      idempotencyFingerprint: keyResult.key ? fingerprint : null,
-      actor
-    });
-    if (!stockResult.ok) {
-      req.db.material_usage.splice(req.db.material_usage.indexOf(usage), 1);
-      return res.status(stockResult.status).json({ success: false, message: stockResult.message });
+
+    // Single-deduction custody guard: check if stock was already deducted via Store Issue Voucher (SIV)
+    const issuedSivs = (req.db.store_issue_vouchers || []).filter((siv) => siv.dispatch_card_id === dispatchId);
+    let totalIssuedBySiv = 0;
+    for (const siv of issuedSivs) {
+      for (const it of siv.items || []) {
+        if (it.stock_item_id === stockItem.id || it.item_code === stockItem.item_code) {
+          totalIssuedBySiv += Number(it.quantity_issued || 0);
+        }
+      }
+    }
+
+    const priorUsage = (req.db.material_usage || [])
+      .filter((u) => u.dispatch_card_id === dispatchId && u.id !== usage.id && u.catalog_item_id === body.catalog_item_id)
+      .reduce((sum, u) => sum + Number(u.quantity_used || 0), 0);
+
+    const availableFromSiv = Math.max(0, totalIssuedBySiv - priorUsage);
+    const unissuedQuantity = Math.max(0, Number(body.quantity_used) - availableFromSiv);
+
+    if (unissuedQuantity > 0) {
+      stockResult = applyStockChange({
+        store: req.store,
+        db: req.db,
+        stockItem,
+        movementType: "out",
+        requestedQuantity: unissuedQuantity,
+        reason: `Worksheet material usage - dispatch ${job.dispatch_number}`,
+        referenceId: usage.id,
+        referenceType: "material_usage",
+        overrideNegative: body.override_negative,
+        idempotencyKey: keyResult.key,
+        idempotencyFingerprint: keyResult.key ? fingerprint : null,
+        actor
+      });
+      if (!stockResult.ok) {
+        req.db.material_usage.splice(req.db.material_usage.indexOf(usage), 1);
+        return res.status(stockResult.status).json({ success: false, message: stockResult.message });
+      }
+    } else {
+      // 100% of the material was already deducted from central stock at SIV issuance.
+      // Record custody tracking on the usage record without a second central stock deduction.
+      usage.siv_custody_drawn = Number(body.quantity_used);
     }
   } else {
     req.db.material_usage.push(usage);
@@ -553,7 +578,19 @@ export const addMaterialUsage = (req, res) => {
   req.store.audit(req.db, actor, "material_usage", usage.id, "MATERIAL_USAGE_ADDED", null, usageForResponse);
 
   if (!stockResult) {
-    return res.json({ success: true, data: usageForResponse });
+    return res.json({
+      success: true,
+      data: usageForResponse,
+      ...(stockItem && usage.siv_custody_drawn ? {
+        stock_deducted: {
+          item: stockItem.item_code,
+          quantity: 0,
+          siv_custody_drawn: usage.siv_custody_drawn,
+          remaining: stockItem.quantity_on_hand,
+          is_low_stock: stockItem.quantity_on_hand <= (stockItem.reorder_level ?? 0)
+        }
+      } : {})
+    });
   }
 
   req.store.audit(req.db, actor, "stock_movement", stockResult.movement.id, "STOCK_DEDUCTED_VIA_WORKSHEET", stockResult.before, { ...stockResult.stockItem, movement: publicMovement(stockResult.movement) });

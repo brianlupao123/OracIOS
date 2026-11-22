@@ -71,9 +71,9 @@ export default function ProcurementPage({ user }) {
 
   const [sivForm, setSivForm] = useState({
     dispatch_card_id: "",
-    technician_id: user?.id || "u-tech",
-    requested_by: user?.name || "Operations Team",
-    purpose: "Conveyor Belt Cold Splicing & Rubber Lining",
+    technician_id: user?.id || "",
+    requested_by: user?.name || "",
+    purpose: "",
     items: [{ stock_item_id: "", quantity: 1 }]
   });
 
@@ -88,7 +88,7 @@ export default function ProcurementPage({ user }) {
 
   const [matchResult, setMatchResult] = useState(null);
 
-  const canApprove = ["Admin", "Management", "Finance"].includes(user?.role);
+  const canApprove = ["Admin", "Management", "Procurement & Stores"].includes(user?.role);
 
   async function loadAll() {
     setLoading(true);
