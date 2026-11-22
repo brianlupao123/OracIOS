@@ -20,7 +20,7 @@ function resolveActor(req) {
   return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
-function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor"]) {
+function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "Human Resources"]) {
   if (!actor) {
     const err = new Error("Unauthorized. Authentication required.");
     err.statusCode = 401;
@@ -38,7 +38,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 export const createArtisanQualification = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Human Resources"]);
 
     const parseResult = CreateArtisanQualificationSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -83,7 +83,7 @@ export const createArtisanQualification = (req, res) => {
 export const listArtisanQualifications = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "Human Resources"]);
 
     req.db.artisan_qualifications = req.db.artisan_qualifications || [];
     let list = [...req.db.artisan_qualifications];
@@ -108,7 +108,7 @@ export const listArtisanQualifications = (req, res) => {
 export const recordMineInduction = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Human Resources"]);
 
     const parseResult = RecordMineInductionSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -153,7 +153,7 @@ export const recordMineInduction = (req, res) => {
 export const listMineInductions = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "Human Resources"]);
 
     req.db.mine_site_inductions = req.db.mine_site_inductions || [];
     let list = [...req.db.mine_site_inductions];
@@ -181,7 +181,7 @@ export const listMineInductions = (req, res) => {
 export const verifyArtisanDispatchGate = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Human Resources"]);
 
     const parseResult = VerifyArtisanDispatchGateSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -257,7 +257,7 @@ export const verifyArtisanDispatchGate = (req, res) => {
 export const getArtisanVaultSummary = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Human Resources"]);
 
     req.db.artisan_qualifications = req.db.artisan_qualifications || [];
     req.db.mine_site_inductions = req.db.mine_site_inductions || [];

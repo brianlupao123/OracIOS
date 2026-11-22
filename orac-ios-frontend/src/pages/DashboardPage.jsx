@@ -21,18 +21,22 @@ import { formatMoney } from "../lib/format.js";
  */
 
 const ROLE_GREETING = {
-  Admin:          "Admin Console",
-  Management:     "Management Overview",
-  Sales:          "Sales Pipeline",
-  Operations:     "Operations Center",
-  Technician:     "My Assignments",
-  Supervisor:     "Supervisor Review",
-  Finance:        "Finance & Invoicing",
-  "Client Viewer":"Client Dashboard",
+  Admin:                   "Admin Console",
+  Management:              "Management Overview",
+  Sales:                   "Sales Pipeline",
+  Operations:              "Operations Center",
+  Technician:              "My Assignments",
+  Supervisor:              "Supervisor Review",
+  Finance:                 "Finance & Invoicing",
+  "Client Viewer":         "Client Dashboard",
+  "Procurement & Stores":  "Procurement & Stores Hub",
+  "Fleet & Facilities":    "Fleet Logistics & Compliance Hub",
+  "HSE & Quality":         "HSE Safety & Quality Hub",
+  "Human Resources":       "Human Resources & Workforce"
 };
 
 const QUOTE_DASHBOARD_ROLES = ["Admin", "Management", "Sales", "Finance", "Operations", "Client Viewer"];
-const OPERATIONAL_DASHBOARD_ROLES = ["Admin", "Management", "Operations", "Supervisor", "Technician"];
+const OPERATIONAL_DASHBOARD_ROLES = ["Admin", "Management", "Operations", "Supervisor", "Technician", "Fleet & Facilities", "HSE & Quality"];
 const FIELD_DASHBOARD_ROLES = ["Supervisor", "Technician"];
 
 export default function DashboardPage({ user }) {
@@ -299,6 +303,102 @@ export default function DashboardPage({ user }) {
         subtitle="Waiting for client acknowledgement or Supervisor review"
         evidenceTarget="evidence-kpi-worksheets-review"
         onClick={() => navigate("/worksheets")}
+      />
+    );
+  }
+
+  // Procurement & Stores: PRs & Inventory
+  if (user.role === "Procurement & Stores") {
+    roleCards.push(
+      <IconStatCard
+        key="procurement_prs"
+        label="Pending Requisitions"
+        value={stats?.pending_prs ?? 0}
+        iconPath={ICONS.clipboard}
+        tone={(stats?.pending_prs || 0) > 0 ? "amber" : "neutral"}
+        subtitle="Purchase requisitions awaiting action"
+        onClick={() => navigate("/procurement")}
+      />,
+      <IconStatCard
+        key="inventory_stock"
+        label="Inventory Ledger"
+        value={stats?.low_stock_items ?? 0}
+        iconPath={ICONS.clipboard}
+        tone={(stats?.low_stock_items || 0) > 0 ? "amber" : "green"}
+        subtitle="Stores & stock items"
+        onClick={() => navigate("/inventory")}
+      />
+    );
+  }
+
+  // Fleet & Facilities: Vehicles & Compliance
+  if (user.role === "Fleet & Facilities") {
+    roleCards.push(
+      <IconStatCard
+        key="fleet_vehicles"
+        label="Fleet Vehicles"
+        value={stats?.total_vehicles ?? 0}
+        iconPath={ICONS.truck}
+        tone="blue"
+        subtitle="Active fleet tracking"
+        onClick={() => navigate("/fleet")}
+      />,
+      <IconStatCard
+        key="fleet_compliance"
+        label="Compliance Alerts"
+        value={stats?.compliance_warnings ?? 0}
+        iconPath={ICONS.warning}
+        tone={(stats?.compliance_warnings || 0) > 0 ? "amber" : "green"}
+        subtitle="VID, Insurance & roadworthiness"
+        onClick={() => navigate("/fleet")}
+      />
+    );
+  }
+
+  // HSE & Quality: Safety Clearance & Incidents
+  if (user.role === "HSE & Quality") {
+    roleCards.push(
+      <IconStatCard
+        key="hse_ppe"
+        label="Pre-Dispatch PPE"
+        value={stats?.passed_ppe_inspections ?? 0}
+        iconPath={ICONS.clipboard}
+        tone="green"
+        subtitle="Safety clearance inspections"
+        onClick={() => navigate("/hse")}
+      />,
+      <IconStatCard
+        key="hse_incidents"
+        label="Open Incidents"
+        value={stats?.open_incidents ?? 0}
+        iconPath={ICONS.warning}
+        tone={(stats?.open_incidents || 0) > 0 ? "red" : "green"}
+        subtitle="Active safety reports & hazards"
+        onClick={() => navigate("/hse")}
+      />
+    );
+  }
+
+  // Human Resources: Artisan Vault & Certs
+  if (user.role === "Human Resources") {
+    roleCards.push(
+      <IconStatCard
+        key="artisan_certifications"
+        label="Artisan Vault"
+        value={stats?.total_qualifications ?? 0}
+        iconPath={ICONS.users}
+        tone="blue"
+        subtitle="Trade cards & qualifications"
+        onClick={() => navigate("/artisans")}
+      />,
+      <IconStatCard
+        key="artisan_expiries"
+        label="Expiring Certs"
+        value={stats?.expiring_qualifications ?? 0}
+        iconPath={ICONS.clock}
+        tone={(stats?.expiring_qualifications || 0) > 0 ? "amber" : "green"}
+        subtitle="Requiring renewal within 30 days"
+        onClick={() => navigate("/artisans")}
       />
     );
   }

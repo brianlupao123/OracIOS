@@ -9,7 +9,7 @@ function resolveActor(req) {
   return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
-function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor"]) {
+function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]) {
   if (!actor) {
     const err = new Error("Unauthorized. Authentication required.");
     err.statusCode = 401;
@@ -27,7 +27,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 export const recordPreDispatchPpe = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]);
 
     const parseResult = PreDispatchPpeChecklistSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -99,7 +99,7 @@ export const recordPreDispatchPpe = (req, res) => {
 export const listPpeChecklists = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "HSE & Quality"]);
     req.db.pre_dispatch_ppe_checklists = req.db.pre_dispatch_ppe_checklists || [];
     return res.json({ success: true, data: req.db.pre_dispatch_ppe_checklists });
   } catch (err) {
@@ -112,7 +112,7 @@ export const listPpeChecklists = (req, res) => {
 export const createToolboxTalk = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]);
 
     const parseResult = CreateToolboxTalkSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -155,7 +155,7 @@ export const createToolboxTalk = (req, res) => {
 export const listToolboxTalks = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "HSE & Quality"]);
     req.db.toolbox_talks = req.db.toolbox_talks || [];
     return res.json({ success: true, data: req.db.toolbox_talks });
   } catch (err) {
@@ -168,7 +168,7 @@ export const listToolboxTalks = (req, res) => {
 export const reportIncident = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "HSE & Quality"]);
 
     const parseResult = CreateIncidentReportSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -213,7 +213,7 @@ export const reportIncident = (req, res) => {
 export const listIncidents = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]);
     req.db.hse_incident_reports = req.db.hse_incident_reports || [];
     return res.json({ success: true, data: req.db.hse_incident_reports });
   } catch (err) {
@@ -224,7 +224,7 @@ export const listIncidents = (req, res) => {
 export const getHseSummary = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]);
 
     const ppeList = req.db.pre_dispatch_ppe_checklists || [];
     const talks = req.db.toolbox_talks || [];

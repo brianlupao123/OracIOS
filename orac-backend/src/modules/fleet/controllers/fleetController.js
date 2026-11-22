@@ -5,14 +5,18 @@ import {
   LogFuelSchema
 } from "../../../schemas.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
-function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor"]) {
-  if (!actor || !allowedRoles.includes(actor.role)) {
+function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "Fleet & Facilities"]) {
+  if (!actor) {
+    const err = new Error("Unauthorized. Authentication required.");
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -21,8 +25,8 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 
 export const createVehicle = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Fleet & Facilities"]);
 
     const parseResult = CreateVehicleSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -68,8 +72,8 @@ export const createVehicle = (req, res) => {
 
 export const listVehicles = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance", "Technician"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance", "Technician", "Fleet & Facilities"]);
     req.db.vehicles = req.db.vehicles || [];
     return res.json({ success: true, data: req.db.vehicles });
   } catch (err) {
@@ -81,8 +85,8 @@ export const listVehicles = (req, res) => {
 
 export const dispatchVehicle = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Fleet & Facilities"]);
 
     const parseResult = DispatchVehicleSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -162,8 +166,8 @@ export const dispatchVehicle = (req, res) => {
 
 export const returnVehicle = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Fleet & Facilities"]);
 
     const { id } = req.params; // dispatch trip ID
     const parseResult = ReturnVehicleSchema.safeParse(req.body);
@@ -217,8 +221,8 @@ export const returnVehicle = (req, res) => {
 
 export const logFuel = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance", "Fleet & Facilities"]);
 
     const parseResult = LogFuelSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -264,8 +268,8 @@ export const logFuel = (req, res) => {
 
 export const getFleetSummary = (req, res) => {
   try {
-    const actor = getActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance"]);
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Finance", "Fleet & Facilities"]);
 
     const vehicles = req.db.vehicles || [];
     const trips = req.db.vehicle_dispatches || [];

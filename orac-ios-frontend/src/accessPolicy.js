@@ -181,6 +181,24 @@ export function canEnterPaperTimesheet(role) {
 }
 
 export function canAccessRoute(role, path) {
+  if (path === "/procurement" && !procurementEnabled()) return false;
+  if ((path === "/fleet" || path === "/hse") && !fleetHseEnabled()) return false;
+  if (path === "/artisans" && !artisanVaultEnabled()) return false;
+
+  // Support specialized operational roles cleanly without altering the 8-role ROUTE_ACCESS snapshot
+  if (role === "Procurement & Stores") {
+    return ["/", "/inventory", "/procurement", "/internal-requests", "/operational-data", "/documents"].includes(path);
+  }
+  if (role === "Fleet & Facilities") {
+    return ["/", "/fleet", "/job-cards", "/internal-requests", "/operational-data", "/documents"].includes(path);
+  }
+  if (role === "HSE & Quality") {
+    return ["/", "/hse", "/job-cards", "/internal-requests", "/operational-data", "/documents"].includes(path);
+  }
+  if (role === "Human Resources") {
+    return ["/", "/artisans", "/admin", "/internal-requests", "/operational-data", "/documents"].includes(path);
+  }
+
   const allowedRoles = ROUTE_ACCESS[path];
   return path === "/" || Boolean(allowedRoles?.includes(role));
 }
