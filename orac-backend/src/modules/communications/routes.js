@@ -13,7 +13,7 @@ import {
   listQueueMessages, getCommunicationQueueStats, createQueueMessage,
   dispatchQueueMessage, cancelQueueMessage, retryQueueMessage
 } from "../../controllers/communicationsController.js";
-import { sendQuotationPdfEmail } from "../../services/quotationEmailService.js";
+import { sendQuotationPdfEmail, confirmQuotationReceipt } from "../../services/quotationEmailService.js";
 
 const communicationsRouter = Router();
 
@@ -54,25 +54,77 @@ communicationsRouter.post("/communications/preview", guardCommunication, preview
 communicationsRouter.get("/communications/timeline/:entityType/:entityId", guardCommunication, getTimeline);
 communicationsRouter.post("/communications/evidence", guardCommunication, recordEvidence);
 communicationsRouter.post("/communications/record-external-send", guardCommunication, recordExternalSendEndpoint);
-communicationsRouter.post("/communications/send-quotation-pdf", guardCommunication, async (req, res) => {
+/**
+ * Sales may act only on quotes in its own portfolio. guardCommunication keys on
+ * entity_type / business_record_type, which these endpoints do not send, so the
+ * quote the handler will actually use (quote_id) is checked here, fail-closed.
+ * A missing quote and an out-of-portfolio quote get the same answer (no existence oracle).
+ */
+function assertQuoteInActorScope(actor, quoteId, db) {
+  if (actor.role !== roles.SALES) return;
+  const quote = (db?.quotes || []).find((q) => q.id === quoteId);
+  if (!quote || !isQuoteInSalesPortfolio(quote, actor, db)) {
+    throw Object.assign(new Error("Communication access denied."), { status: 403, code: "QUOTE_SCOPE_DENIED" });
+  }
+}
+
+function sendError(res, err) {
+  return res.status(err.status || 500).json({
+    success: false,
+    message: err.message,
+    code: err.code,
+    ...(err.data ? { data: err.data } : {})
+  });
+}
+
+export async function sendQuotationPdfHandler(req, res) {
   try {
     const actor = getActor(req);
-    const { quote_id, recipient_email, recipient_name, subject, body } = req.body;
+    const { quote_id, recipient_email, recipient_name, subject, body, idempotency_key, resend_of, resend_reason } = req.body || {};
+    assertQuoteInActorScope(actor, quote_id, req.db);
     const result = await sendQuotationPdfEmail({
       quoteId: quote_id,
       recipientEmail: recipient_email,
       recipientName: recipient_name,
       subject,
       body,
+      idempotencyKey: idempotency_key ?? req.headers?.["idempotency-key"] ?? null,
+      resendOf: resend_of,
+      resendReason: resend_reason,
       actor,
       store: req.store,
       db: req.db
     });
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
-    return res.status(err.status || 500).json({ success: false, message: err.message, code: err.code });
+    return sendError(res, err);
   }
-});
+}
+
+// Human-recorded recipient receipt: a separate evidence action, never implied by SMTP acceptance.
+export function confirmQuotationReceiptHandler(req, res) {
+  try {
+    const actor = getActor(req);
+    const { quote_id, evidence_id, method, note, received_at } = req.body || {};
+    assertQuoteInActorScope(actor, quote_id, req.db);
+    const result = confirmQuotationReceipt({
+      quoteId: quote_id,
+      evidenceId: evidence_id,
+      method,
+      note,
+      receivedAt: received_at,
+      actor,
+      store: req.store,
+      db: req.db
+    });
+    return res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
+communicationsRouter.post("/communications/send-quotation-pdf", guardCommunication, sendQuotationPdfHandler);
+communicationsRouter.post("/communications/quotation-pdf-receipt", guardCommunication, confirmQuotationReceiptHandler);
 communicationsRouter.get("/communications/digest", (req, res, next) => {
   if (req.user?.role !== roles.ADMIN) return res.status(403).json({ success: false, message: "Admin access required." });
   next();

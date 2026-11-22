@@ -154,6 +154,21 @@ export function buildMimeMessage({ from, to, toName, subject, body, html, attach
 }
 
 /**
+ * Tags an SMTP failure with whether the message may nevertheless have been
+ * accepted. SMTP cannot be rolled back: once the DATA payload has been written,
+ * a timeout or dropped connection leaves the outcome UNKNOWN, not "failed".
+ * A negative server reply (4xx/5xx) or any failure before DATA is definitive.
+ *
+ * @param {Error} error
+ * @param {{ dataSent: boolean }} state dataSent = DATA payload written, no final reply yet
+ */
+export function markSmtpOutcome(error, { dataSent }) {
+  error.outcomeUncertain = Boolean(dataSent);
+  error.smtpStage = dataSent ? "after_data" : "before_data";
+  return error;
+}
+
+/**
  * Executes a native SMTP conversation using Node.js net/tls sockets.
  */
 function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload, timeoutMs = 15000 }) {
@@ -171,8 +186,11 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
 
     const timer = setTimeout(() => {
       if (!completed) {
+        const dataSent = step >= 10;
         cleanup();
-        reject(new Error(`SMTP connection timed out after ${timeoutMs}ms while connecting to ${host}:${port}`));
+        reject(markSmtpOutcome(new Error(dataSent
+          ? `SMTP server did not confirm the message within ${timeoutMs}ms after DATA was sent; the message may have been accepted`
+          : `SMTP connection timed out after ${timeoutMs}ms while connecting to ${host}:${port}`), { dataSent }));
       }
     }, timeoutMs);
 
@@ -193,7 +211,9 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
       if (code >= 400) {
         cleanup();
         clearTimeout(timer);
-        return reject(new Error(`SMTP server error (${code}): ${lastLine.slice(4).trim()}`));
+        const replyError = markSmtpOutcome(new Error(`SMTP server error (${code}): ${lastLine.slice(4).trim()}`), { dataSent: false });
+        replyError.smtpCode = code;
+        return reject(replyError);
       }
 
       try {
@@ -213,7 +233,7 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
             } else {
               cleanup();
               clearTimeout(timer);
-              reject(new Error("SMTP server did not offer STARTTLS; refusing plaintext authentication"));
+              reject(markSmtpOutcome(new Error("SMTP server did not offer STARTTLS; refusing plaintext authentication"), { dataSent: false }));
             }
             break;
 
@@ -232,9 +252,10 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
               socket.write(`EHLO orac-backend\r\n`);
             });
             tlsSocket.on("error", (err) => {
+              const dataSent = step >= 10 && !completed;
               cleanup();
               clearTimeout(timer);
-              reject(err);
+              reject(markSmtpOutcome(err, { dataSent }));
             });
             break;
 
@@ -288,9 +309,10 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
             break;
         }
       } catch (err) {
+        const dataSent = step >= 10 && !completed;
         cleanup();
         clearTimeout(timer);
-        reject(err);
+        reject(markSmtpOutcome(err, { dataSent }));
       }
     };
 
@@ -306,12 +328,21 @@ function sendSmtpSocket({ host, port, secure, user, pass, from, to, mimePayload,
         cleanup();
         return;
       }
+      const dataSent = step >= 10;
       cleanup();
       clearTimeout(timer);
-      reject(err);
+      reject(markSmtpOutcome(err, { dataSent }));
     });
     socket.on("close", () => {
+      const dataSent = step >= 10 && !completed;
       cleanup();
+      if (!completed) {
+        clearTimeout(timer);
+        // No-op if the promise already settled (e.g. a rejected SMTP reply).
+        reject(markSmtpOutcome(new Error(dataSent
+          ? "SMTP connection closed after DATA was sent without a final reply; the message may have been accepted"
+          : "SMTP connection closed before the message was sent"), { dataSent }));
+      }
     });
   });
 }
