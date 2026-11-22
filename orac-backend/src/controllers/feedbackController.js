@@ -19,14 +19,18 @@ import {
   generateQrBundle
 } from "../services/qrCodeService.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
 function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "Sales"]) {
-  if (!actor || !allowedRoles.includes(actor.role)) {
+  if (!actor) {
+    const err = new Error("Unauthorized. Authentication required.");
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -37,7 +41,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 
 export const submitFeedback = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     // Any authenticated role, including Client Viewer, can submit post-job evaluation
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Client Viewer"]);
 
@@ -104,7 +108,7 @@ export const submitFeedback = (req, res) => {
 
 export const listFeedbacks = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Client Viewer"]);
 
     req.db.client_job_feedbacks = req.db.client_job_feedbacks || [];
@@ -128,7 +132,7 @@ export const listFeedbacks = (req, res) => {
 
 export const resolveFeedbackTriage = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
 
     req.db.client_job_feedbacks = req.db.client_job_feedbacks || [];
@@ -166,7 +170,7 @@ export const resolveFeedbackTriage = (req, res) => {
 
 export const getFeedbackSummary = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales"]);
 
     req.db.client_job_feedbacks = req.db.client_job_feedbacks || [];
@@ -182,7 +186,7 @@ export const getFeedbackSummary = (req, res) => {
 
 export const generateQrToken = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Technician"]);
 
     const parseResult = GenerateQrTokenSchema.safeParse(req.body);
@@ -226,7 +230,7 @@ export const generateQrToken = (req, res) => {
 
 export const getQbrReportDeck = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Sales"]);
 
     const metrics = compileQbrExecutiveMetrics(req.db);

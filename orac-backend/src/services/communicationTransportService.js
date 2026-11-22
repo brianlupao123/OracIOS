@@ -15,16 +15,6 @@ import tls from "node:tls";
 import crypto from "node:crypto";
 
 /**
- * Controlled test recipients for operational pilot.
- * No email outside this list will ever be transmitted during pilot phase.
- */
-export const DEFAULT_CONTROLLED_RECIPIENTS = Object.freeze([
-  "lupaobrian98@gmail.com",   // Admin
-  "brianwabwile79@gmail.com",  // Sales
-  "lupaob1@gmail.com"          // Client
-]);
-
-/**
  * Normalizes email address for comparison (trimmed, lowercased).
  */
 export function normalizeEmail(email) {
@@ -34,18 +24,20 @@ export function normalizeEmail(email) {
 
 /**
  * Returns the active set of permitted test recipients.
+ * Fail closed: returns an empty list if CONTROLLED_RECIPIENT_ALLOWLIST is missing or empty.
+ * No personal email addresses are ever hardcoded in application code.
  */
 export function getAllowedRecipients() {
   const envAllowlist = process.env.CONTROLLED_RECIPIENT_ALLOWLIST;
-  if (envAllowlist && typeof envAllowlist === "string") {
-    const list = envAllowlist
-      .split(",")
-      .map(e => normalizeEmail(e))
-      .filter(e => e && e !== "*");
-    if (envAllowlist.includes("*") && list.length === 0) return [];
-    if (list.length > 0) return list;
+  if (!envAllowlist || typeof envAllowlist !== "string") {
+    return [];
   }
-  return DEFAULT_CONTROLLED_RECIPIENTS.map(e => normalizeEmail(e));
+  const list = envAllowlist
+    .split(",")
+    .map(e => normalizeEmail(e))
+    .filter(e => e && e !== "*");
+  if (envAllowlist.includes("*") && list.length === 0) return [];
+  return list;
 }
 
 /**

@@ -21,9 +21,13 @@ import {
   transitionMaintenanceRequest,
 } from "../services/fleetComplianceService.js";
 
+function getDb(req) {
+  return req.db || req.store?.db || req.app?.locals?.store?.db || req.app?.locals?.db;
+}
+
 export function postOdometerReading(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const reading = logOdometerReading({
       vehicleId: req.body.vehicleId,
       readingKm: req.body.readingKm,
@@ -39,7 +43,7 @@ export function postOdometerReading(req, res) {
 
 export function getOdometer(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const history = getOdometerHistory({
       vehicleId: req.params.vehicleId,
       db,
@@ -52,7 +56,7 @@ export function getOdometer(req, res) {
 
 export function getStats(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const stats = getMileageStats({
       vehicleId: req.params.vehicleId,
       db,
@@ -65,7 +69,7 @@ export function getStats(req, res) {
 
 export function getScanCompliance(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const results = scanFleetCompliance({ db });
     res.json({ ok: true, ...results });
   } catch (err) {
@@ -75,7 +79,7 @@ export function getScanCompliance(req, res) {
 
 export function getExpiryAlerts(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const alerts = getFleetExpiryAlerts({ db });
     res.json({ ok: true, alerts });
   } catch (err) {
@@ -85,7 +89,7 @@ export function getExpiryAlerts(req, res) {
 
 export function postMaintenanceRequest(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const request = createMaintenanceRequest({
       vehicleId: req.body.vehicleId,
       requestedBy: req.user?.id || req.body.requestedBy,
@@ -101,7 +105,7 @@ export function postMaintenanceRequest(req, res) {
 
 export function postMaintenanceTransition(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const request = transitionMaintenanceRequest({
       requestId: req.params.id,
       action: req.body.action,

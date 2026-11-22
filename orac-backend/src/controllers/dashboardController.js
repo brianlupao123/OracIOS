@@ -6,18 +6,20 @@
 import { calculateNps } from "../services/qbrReportService.js";
 import { buildTelemetryExecutiveSummary } from "../services/iotTelemetryService.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
 export const getRoleDashboardSummary = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
+    if (!actor) {
+      return res.status(401).json({ success: false, message: "Unauthorized. Authentication required." });
+    }
     const db = req.db || {};
 
-    const role = actor.role || "Admin";
+    const role = actor.role;
     const clientId = actor.client_id;
 
     // Helper counts

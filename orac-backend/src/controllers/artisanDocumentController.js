@@ -19,10 +19,15 @@ import {
   getExpiringDocuments,
 } from "../services/artisanDocumentService.js";
 
+function getStoreAndDb(req) {
+  const store = req.store || req.app?.locals?.store;
+  const db = req.db || store?.db || req.app?.locals?.db;
+  return { store, db };
+}
+
 export function postRegisterDocument(req, res) {
   try {
-    const store = req.app.locals.store;
-    const db = store?.db || req.app.locals.db;
+    const { store, db } = getStoreAndDb(req);
     const doc = registerDocument({
       technicianId: req.body.technicianId,
       documentType: req.body.documentType,
@@ -30,6 +35,9 @@ export function postRegisterDocument(req, res) {
       issueDate: req.body.issueDate,
       expiryDate: req.body.expiryDate,
       issuingAuthority: req.body.issuingAuthority,
+      fileName: req.body.fileName || req.file?.originalname,
+      fileSize: req.body.fileSize || req.file?.size,
+      mimeType: req.body.mimeType || req.file?.mimetype,
       uploadedBy: req.user?.id || req.body.uploadedBy,
       store,
       db,
@@ -42,8 +50,7 @@ export function postRegisterDocument(req, res) {
 
 export function postVerifyDocument(req, res) {
   try {
-    const store = req.app.locals.store;
-    const db = store?.db || req.app.locals.db;
+    const { store, db } = getStoreAndDb(req);
     const doc = verifyDocument({
       documentId: req.params.id,
       verifiedBy: req.user?.id || req.body.verifiedBy,
@@ -58,8 +65,7 @@ export function postVerifyDocument(req, res) {
 
 export function postRejectDocument(req, res) {
   try {
-    const store = req.app.locals.store;
-    const db = store?.db || req.app.locals.db;
+    const { store, db } = getStoreAndDb(req);
     const doc = rejectDocument({
       documentId: req.params.id,
       rejectedBy: req.user?.id || req.body.rejectedBy,
@@ -75,7 +81,7 @@ export function postRejectDocument(req, res) {
 
 export function getPortfolio(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const { db } = getStoreAndDb(req);
     const portfolio = getDocumentsForArtisan({
       technicianId: req.params.technicianId,
       db,
@@ -88,7 +94,7 @@ export function getPortfolio(req, res) {
 
 export function getCompliance(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const { db } = getStoreAndDb(req);
     const status = checkComplianceStatus({
       technicianId: req.params.technicianId,
       db,
@@ -101,7 +107,7 @@ export function getCompliance(req, res) {
 
 export function getExpiring(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const { db } = getStoreAndDb(req);
     const days = req.query.days ? parseInt(req.query.days, 10) : 30;
     const docs = getExpiringDocuments({ days, db });
     res.json({ ok: true, documents: docs, count: docs.length });

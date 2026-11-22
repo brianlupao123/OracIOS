@@ -15,14 +15,18 @@ import {
   evaluateArtisanVault
 } from "../services/expiryWatcherService.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
 function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor"]) {
-  if (!actor || !allowedRoles.includes(actor.role)) {
+  if (!actor) {
+    const err = new Error("Unauthorized. Authentication required.");
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -33,7 +37,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 
 export const createArtisanQualification = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
 
     const parseResult = CreateArtisanQualificationSchema.safeParse(req.body);
@@ -78,7 +82,7 @@ export const createArtisanQualification = (req, res) => {
 
 export const listArtisanQualifications = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
 
     req.db.artisan_qualifications = req.db.artisan_qualifications || [];
@@ -103,7 +107,7 @@ export const listArtisanQualifications = (req, res) => {
 
 export const recordMineInduction = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
 
     const parseResult = RecordMineInductionSchema.safeParse(req.body);
@@ -148,7 +152,7 @@ export const recordMineInduction = (req, res) => {
 
 export const listMineInductions = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
 
     req.db.mine_site_inductions = req.db.mine_site_inductions || [];
@@ -176,7 +180,7 @@ export const listMineInductions = (req, res) => {
 
 export const verifyArtisanDispatchGate = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
 
     const parseResult = VerifyArtisanDispatchGateSchema.safeParse(req.body);
@@ -252,7 +256,7 @@ export const verifyArtisanDispatchGate = (req, res) => {
 
 export const getArtisanVaultSummary = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor"]);
 
     req.db.artisan_qualifications = req.db.artisan_qualifications || [];

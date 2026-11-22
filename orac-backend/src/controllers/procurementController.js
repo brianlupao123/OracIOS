@@ -7,14 +7,18 @@ import {
 import { verifyThreeWayMatch } from "../services/threeWayMatchingService.js";
 import { applyStockChange } from "../inventoryLedger.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
 function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Finance"]) {
-  if (!actor || !allowedRoles.includes(actor.role)) {
+  if (!actor) {
+    const err = new Error("Unauthorized. Authentication required.");
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -25,7 +29,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 
 export const createProcurementRequest = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Finance", "Supervisor"]);
 
     const parseResult = CreateProcurementRequestSchema.safeParse(req.body);
@@ -74,7 +78,7 @@ export const createProcurementRequest = (req, res) => {
 
 export const approveProcurementRequest = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Finance"]);
 
     const { id } = req.params;
@@ -117,7 +121,7 @@ export const approveProcurementRequest = (req, res) => {
 
 export const createSupplierPo = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Finance", "Operations"]);
 
     const parseResult = CreateSupplierPoSchema.safeParse(req.body);
@@ -200,7 +204,7 @@ export const createSupplierPo = (req, res) => {
 
 export const receiveGrn = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Operations", "Finance", "Management"]);
 
     const parseResult = CreateGrnSchema.safeParse(req.body);
@@ -318,7 +322,7 @@ export const receiveGrn = (req, res) => {
 
 export const issueStoreVoucher = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Operations", "Finance", "Supervisor"]);
 
     const parseResult = CreateStoreIssueVoucherSchema.safeParse(req.body);
@@ -408,7 +412,7 @@ export const issueStoreVoucher = (req, res) => {
 
 export const performThreeWayMatch = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Finance", "Management"]);
 
     const { supplier_po_id, grn_id, invoice, tolerance_percent = 0.0 } = req.body;
@@ -457,7 +461,7 @@ export const performThreeWayMatch = (req, res) => {
 
 export const listProcurementRequests = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ['Admin', 'Management', 'Operations', 'Finance', 'Supervisor']);
     req.db.procurement_requests = req.db.procurement_requests || [];
     return res.json({ success: true, data: req.db.procurement_requests });
@@ -468,7 +472,7 @@ export const listProcurementRequests = (req, res) => {
 
 export const listSupplierPos = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ['Admin', 'Management', 'Operations', 'Finance']);
     req.db.supplier_pos = req.db.supplier_pos || [];
     return res.json({ success: true, data: req.db.supplier_pos });
@@ -479,7 +483,7 @@ export const listSupplierPos = (req, res) => {
 
 export const listGrns = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ['Admin', 'Management', 'Operations', 'Finance']);
     req.db.goods_received_notes = req.db.goods_received_notes || [];
     return res.json({ success: true, data: req.db.goods_received_notes });
@@ -490,7 +494,7 @@ export const listGrns = (req, res) => {
 
 export const listStoreIssueVouchers = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ['Admin', 'Management', 'Operations', 'Finance', 'Supervisor']);
     req.db.store_issue_vouchers = req.db.store_issue_vouchers || [];
     return res.json({ success: true, data: req.db.store_issue_vouchers });
@@ -501,7 +505,7 @@ export const listStoreIssueVouchers = (req, res) => {
 
 export const getProcurementSummary = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ['Admin', 'Management', 'Operations', 'Finance', 'Supervisor']);
     const prs = req.db.procurement_requests || [];
     const pos = req.db.supplier_pos || [];

@@ -19,14 +19,18 @@ import {
   generateDraftQuoteFromSurvey
 } from "../services/meetingAiService.js";
 
-function getActor(req) {
-  if (!req.db || !req.db.users) return { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
-  const u = req.db.users.find((user) => user.id === req.user?.id);
-  return u || { id: req.user?.id || "u-sys", role: "Admin", name: "System User" };
+function resolveActor(req) {
+  if (!req.user?.id) return null;
+  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
 }
 
 function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "Sales"]) {
-  if (!actor || !allowedRoles.includes(actor.role)) {
+  if (!actor) {
+    const err = new Error("Unauthorized. Authentication required.");
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -35,7 +39,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 
 export const bookSurvey = async (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Client Viewer"]);
 
     const parseResult = BookVirtualSurveySchema.safeParse(req.body);
@@ -94,7 +98,7 @@ export const bookSurvey = async (req, res) => {
 
 export const listSurveys = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Client Viewer"]);
 
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
@@ -119,7 +123,7 @@ export const listSurveys = (req, res) => {
 
 export const getSurveyMeetingAccess = async (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales", "Client Viewer"]);
 
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
@@ -153,7 +157,7 @@ export const getSurveyMeetingAccess = async (req, res) => {
 
 export const completeSurveyWithNotes = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales"]);
 
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
@@ -192,7 +196,7 @@ export const completeSurveyWithNotes = (req, res) => {
 
 export const extractSurveyAiScopeAndDraftQuote = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales"]);
 
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
@@ -246,7 +250,7 @@ export const extractSurveyAiScopeAndDraftQuote = (req, res) => {
 
 export const getSurveySummary = (req, res) => {
   try {
-    const actor = getActor(req);
+    const actor = resolveActor(req);
     checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales"]);
 
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];

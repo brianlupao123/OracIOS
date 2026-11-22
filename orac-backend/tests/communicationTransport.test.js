@@ -6,8 +6,7 @@ import {
   getAllowedRecipients,
   getTransportConfig,
   sendEmail,
-  buildMimeMessage,
-  DEFAULT_CONTROLLED_RECIPIENTS
+  buildMimeMessage
 } from "../src/services/communicationTransportService.js";
 
 describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
@@ -16,20 +15,30 @@ describe("Communication Transport Service (Batch 3 - Controlled Pilot)", () => {
   beforeEach(() => {
     process.env = { ...origEnv };
     process.env.COMMUNICATIONS_DRY_RUN = "true";
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "pilot-admin@orac.test, pilot-client@orac.test, lupaob1@gmail.com, Lupaobrian98@gmail.com";
   });
 
   afterEach(() => {
     process.env = { ...origEnv };
   });
 
-  it("permits all default controlled recipients regardless of casing", () => {
-    assert.equal(isRecipientPermitted("Lupaobrian98@gmail.com"), true);
-    assert.equal(isRecipientPermitted("brianwabwile79@gmail.com"), true);
-    assert.equal(isRecipientPermitted("lupaob1@gmail.com"), true);
-    assert.equal(isRecipientPermitted("  LUPAOB1@GMAIL.COM  "), true);
+  it("fails closed when CONTROLLED_RECIPIENT_ALLOWLIST is unset or empty", () => {
+    delete process.env.CONTROLLED_RECIPIENT_ALLOWLIST;
+    assert.deepEqual(getAllowedRecipients(), []);
+    assert.equal(isRecipientPermitted("admin@orac.test"), false);
+    assert.equal(isRecipientPermitted("anyone@gmail.com"), false);
+  });
+
+  it("permits only explicitly allowlisted recipients regardless of casing", () => {
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "pilot-admin@orac.test, pilot-sales@orac.test, pilot-client@orac.test";
+    assert.equal(isRecipientPermitted("Pilot-Admin@orac.test"), true);
+    assert.equal(isRecipientPermitted("pilot-sales@orac.test"), true);
+    assert.equal(isRecipientPermitted("pilot-client@orac.test"), true);
+    assert.equal(isRecipientPermitted("  PILOT-CLIENT@ORAC.TEST  "), true);
   });
 
   it("strictly refuses any recipient outside the controlled allowlist", () => {
+    process.env.CONTROLLED_RECIPIENT_ALLOWLIST = "pilot-admin@orac.test";
     assert.equal(isRecipientPermitted("attacker@evil.com"), false);
     assert.equal(isRecipientPermitted("admin@competitor.co.zw"), false);
     assert.equal(isRecipientPermitted("random@gmail.com"), false);

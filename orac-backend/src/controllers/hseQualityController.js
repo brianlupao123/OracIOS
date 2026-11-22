@@ -25,9 +25,13 @@ import {
   signOffInspection,
 } from "../services/hseQualityService.js";
 
+function getDb(req) {
+  return req.db || req.store?.db || req.app?.locals?.store?.db || req.app?.locals?.db;
+}
+
 export function postCreateJsa(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const jsa = createJsa({
       dispatchId: req.body.dispatchId,
       createdBy: req.user?.id || req.body.createdBy,
@@ -44,7 +48,7 @@ export function postCreateJsa(req, res) {
 
 export function postSubmitJsa(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const jsa = submitJsa({
       jsaId: req.params.id,
       submittedBy: req.user?.id || req.body.submittedBy,
@@ -58,7 +62,7 @@ export function postSubmitJsa(req, res) {
 
 export function postApproveJsa(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const jsa = approveJsa({
       jsaId: req.params.id,
       approvedBy: req.user?.id || req.body.approvedBy,
@@ -72,7 +76,7 @@ export function postApproveJsa(req, res) {
 
 export function postRejectJsa(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const jsa = rejectJsa({
       jsaId: req.params.id,
       rejectedBy: req.user?.id || req.body.rejectedBy,
@@ -87,7 +91,7 @@ export function postRejectJsa(req, res) {
 
 export function getJsaCheck(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const approved = hasApprovedJsa({
       dispatchId: req.params.dispatchId,
       db,
@@ -100,7 +104,7 @@ export function getJsaCheck(req, res) {
 
 export function postCreateInspection(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const inspection = createInspection({
       dispatchId: req.body.dispatchId,
       inspectorId: req.user?.id || req.body.inspectorId,
@@ -116,7 +120,7 @@ export function postCreateInspection(req, res) {
 
 export function postRecordResults(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const inspection = recordInspectionResults({
       inspectionId: req.params.id,
       results: req.body.results,
@@ -130,7 +134,7 @@ export function postRecordResults(req, res) {
 
 export function postSubmitInspection(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const inspection = submitInspection({
       inspectionId: req.params.id,
       submittedBy: req.user?.id || req.body.submittedBy,
@@ -144,7 +148,7 @@ export function postSubmitInspection(req, res) {
 
 export function postSignOff(req, res) {
   try {
-    const db = req.app.locals.store?.db || req.app.locals.db;
+    const db = getDb(req);
     const inspection = signOffInspection({
       inspectionId: req.params.id,
       signedOffBy: req.user?.id || req.body.signedOffBy,
