@@ -33,31 +33,31 @@ export default function ArtisanVaultPage({ user }) {
 
   // Forms
   const [qualForm, setQualForm] = useState({
-    technician_id: user?.id || "u-tech-01",
-    technician_name: user?.name || "Lead Artisan",
+    technician_id: user?.role === "Technician" ? (user?.id || "") : "",
+    technician_name: user?.role === "Technician" ? (user?.name || "") : "",
     trade_discipline: "RUBBER_LINING",
     qualification_type: "RED_SEAL",
-    certificate_number: "RS-ZIM-2024-912",
-    issuing_authority: "National Manpower Advisory Council (NAMACO)",
-    issue_date: "2024-01-15",
-    expiry_date: new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10),
+    certificate_number: "",
+    issuing_authority: "",
+    issue_date: "",
+    expiry_date: "",
     document_url: ""
   });
 
   const [indForm, setIndForm] = useState({
-    technician_id: user?.id || "u-tech-01",
-    technician_name: user?.name || "Lead Artisan",
+    technician_id: user?.role === "Technician" ? (user?.id || "") : "",
+    technician_name: user?.role === "Technician" ? (user?.name || "") : "",
     mine_site: "ZIMPLATS_SMC",
-    induction_card_number: "ZIMP-IND-8831",
-    induction_date: new Date().toISOString().slice(0, 10),
-    expiry_date: new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10),
-    medical_fit_to_work_pass: true
+    induction_card_number: "",
+    induction_date: "",
+    expiry_date: "",
+    medical_fit_to_work_pass: false
   });
 
   // Gate verification interactive test state
   const [gateTest, setGateTest] = useState({
-    dispatch_card_id: "DC-FIELD-701",
-    technician_id: user?.id || "u-tech-01",
+    dispatch_card_id: "",
+    technician_id: user?.role === "Technician" ? (user?.id || "") : "",
     mine_site: "ZIMPLATS_SMC"
   });
   const [gateResult, setGateResult] = useState(null);

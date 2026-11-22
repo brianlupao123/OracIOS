@@ -43,10 +43,11 @@ export function createLeave(req, res) {
 // GET /leave-requests
 export function listLeaves(req, res) {
   try {
-    // Admin/Management see all; others see only their own
-    const userId = (req.user.role === "Admin" || req.user.role === "Management")
+    // Admin/Management/HR see all; others see only their own
+    const isElevated = ["Admin", "Management", "Human Resources"].includes(req.user?.role);
+    const userId = isElevated
       ? req.query.user_id || undefined
-      : req.user.id;
+      : req.user?.id;
 
     const requests = listLeaveRequests({
       userId,
@@ -65,8 +66,8 @@ export function listLeaves(req, res) {
 export function getLeave(req, res) {
   try {
     const request = getLeaveRequest({ requestId: req.params.id, db: req.db });
-    // Non-admin can only view their own
-    if (req.user.role !== "Admin" && req.user.role !== "Management" && request.user_id !== req.user.id) {
+    const isElevated = ["Admin", "Management", "Human Resources"].includes(req.user?.role);
+    if (!isElevated && request.user_id !== req.user?.id) {
       return res.status(403).json({ success: false, message: "Access denied." });
     }
     return res.json({ success: true, data: request });
@@ -93,6 +94,14 @@ export function submitLeave(req, res) {
 // POST /leave-requests/:id/approve
 export function approveLeave(req, res) {
   try {
+    const approverRoles = ["Admin", "Management", "Operations", "Human Resources"];
+    if (!approverRoles.includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Role ${req.user?.role || "Unknown"} is not authorized to approve leave.`
+      });
+    }
+
     const request = approveLeaveRequest({
       requestId: req.params.id,
       approvedBy: req.user.id,
@@ -108,6 +117,14 @@ export function approveLeave(req, res) {
 // POST /leave-requests/:id/reject
 export function rejectLeave(req, res) {
   try {
+    const approverRoles = ["Admin", "Management", "Operations", "Human Resources"];
+    if (!approverRoles.includes(req.user?.role)) {
+      return res.status(403).json({
+        success: false,
+        message: `Role ${req.user?.role || "Unknown"} is not authorized to reject leave.`
+      });
+    }
+
     const request = rejectLeaveRequest({
       requestId: req.params.id,
       rejectedBy: req.user.id,
@@ -124,6 +141,11 @@ export function rejectLeave(req, res) {
 // POST /leave-requests/:id/cancel
 export function cancelLeave(req, res) {
   try {
+    const existing = getLeaveRequest({ requestId: req.params.id, db: req.db });
+    const isElevated = ["Admin", "Management", "Human Resources"].includes(req.user?.role);
+    if (!isElevated && existing.user_id !== req.user?.id) {
+      return res.status(403).json({ success: false, message: "Access denied: cannot cancel another user's leave request." });
+    }
     const request = cancelLeaveRequest({
       requestId: req.params.id,
       cancelledBy: req.user.id,
@@ -140,9 +162,10 @@ export function cancelLeave(req, res) {
 // GET /leave-balance/:userId
 export function getBalance(req, res) {
   try {
-    // Non-admin can only view their own balance
+    // Non-admin/HR can only view their own balance
     const targetUserId = req.params.userId;
-    if (req.user.role !== "Admin" && req.user.role !== "Management" && targetUserId !== req.user.id) {
+    const canViewBalance = ["Admin", "Management", "Human Resources"].includes(req.user?.role);
+    if (!canViewBalance && targetUserId !== req.user?.id) {
       return res.status(403).json({ success: false, message: "Access denied." });
     }
     const balance = getLeaveBalance({
