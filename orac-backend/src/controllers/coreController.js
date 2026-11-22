@@ -5,6 +5,7 @@ import { revokeSessions } from "../middleware/auth.js";
 import { hasPermission, requirePermission, permissions } from "../permissions.js";
 import { roles } from "../permissions.js";
 import { isClientViewer, scopeByClient } from "../middleware/clientScope.js";
+import { redactClientForbiddenFields } from "../clientAllowlist.js";
 import {
   enrichClient,
   enrichMineSite,
@@ -152,17 +153,22 @@ const hierarchyEnrichers = {
   equipment_tags: enrichEquipmentTag
 };
 
-function collectionResponseData(collectionName, data, db) {
-  if (collectionName === "audit_logs") return redactSensitiveFields(data, auditOnlyRedactedKeys);
-  if (collectionName === "users") return data.map(toPublicUser);
-  if (collectionName === "stock_movements") {
-    return data.map((movement) => decorateMovementForDisplay(db, movement));
+function collectionResponseData(collectionName, data, db, actor) {
+  let result = data;
+  if (collectionName === "audit_logs") result = redactSensitiveFields(result, auditOnlyRedactedKeys);
+  else if (collectionName === "users") result = result.map(toPublicUser);
+  else if (collectionName === "stock_movements") {
+    result = result.map((movement) => decorateMovementForDisplay(db, movement));
+  } else {
+    const enrich = hierarchyEnrichers[collectionName];
+    if (enrich) {
+      result = result.map((item) => enrich(db, item));
+    }
   }
-  const enrich = hierarchyEnrichers[collectionName];
-  if (enrich) {
-    return data.map((item) => enrich(db, item));
+  if (isClientViewer(actor)) {
+    result = redactClientForbiddenFields(result);
   }
-  return data;
+  return result;
 }
 
 function isTechnicianAssignedToDispatch(dispatch, actor, db) {
@@ -514,7 +520,7 @@ export const getCollection = (collectionName) => {
       }
     }
     data = scopeOperationalData(data, collectionName, actor, req.db);
-    res.json({ success: true, data: collectionResponseData(collectionName, data, req.db) });
+    res.json({ success: true, data: collectionResponseData(collectionName, data, req.db, actor) });
   };
 };
 

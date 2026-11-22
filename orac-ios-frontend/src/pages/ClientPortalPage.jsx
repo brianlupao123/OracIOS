@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { collections, quotes as quotesApi } from "../api/client.js";
+import { collections, quotes as quotesApi, documents } from "../api/client.js";
 import DataTable from "../components/DataTable.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import IconStatCard from "../components/IconStatCard.jsx";
@@ -20,6 +20,14 @@ const CLIENT_VISIBLE_QUOTE_STATUSES = new Set([
   "Invoiced"
 ]);
 
+const ACTIVE_UNPAID_INVOICE_STATUSES = new Set([
+  "issued",
+  "sent",
+  "partially_paid",
+  "pending_payment",
+  "overdue"
+]);
+
 // Server already scopes these collections to the caller's client_id
 // (src/middleware/clientScope.js) — no client-side filtering needed here.
 export default function ClientPortalPage() {
@@ -29,6 +37,7 @@ export default function ClientPortalPage() {
   const [loading, setLoading] = useState(true);
   const [poForm, setPoForm] = useState({ quoteId: "", po_reference: "", po_amount: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [downloadingQuoteId, setDownloadingQuoteId] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -68,8 +77,22 @@ export default function ClientPortalPage() {
     }
   }
 
+  async function handleDownloadQuotePdf(quoteId) {
+    setDownloadingQuoteId(quoteId);
+    setError("");
+    try {
+      await documents.download("quotes", quoteId);
+    } catch (err) {
+      setError(`Failed to download quote PDF: ${err.message}`);
+    } finally {
+      setDownloadingQuoteId(null);
+    }
+  }
+
   const pendingPo = quotes.filter((q) => q.status === "Approved_Pending_PO");
-  const unpaidInvoices = invoices.filter((i) => i.status !== "Paid");
+  const unpaidInvoices = (invoices || []).filter((i) =>
+    ACTIVE_UNPAID_INVOICE_STATUSES.has(String(i.status || "").toLowerCase())
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -219,9 +242,13 @@ export default function ClientPortalPage() {
                       href={`/api/documents/quotes/${q.id}.pdf`}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleDownloadQuotePdf(q.id);
+                      }}
                       className="inline-flex min-h-11 items-center rounded border border-orac-blue px-3 text-sm font-medium text-orac-blue hover:bg-sky-50 dark:hover:bg-sky-950/30"
                     >
-                      PDF
+                      {downloadingQuoteId === q.id ? "Downloading..." : "PDF"}
                     </a>
                   </td>
                 </tr>

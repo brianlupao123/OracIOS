@@ -766,6 +766,16 @@ export const submitClientPo = (req, res) => {
 
   const action = actor.role === "Client Viewer" ? "PO_SUBMITTED_BY_CLIENT" : "PO_RECORDED_BY_STAFF";
   req.store.audit(req.db, actor, "purchase_order", po.id, action, before, po);
+
+  if (actor.role === "Client Viewer") {
+    const quoteBefore = { ...quote };
+    quote.commercial_acceptance_status = "client_accepted";
+    quote.commercial_accepted_at = quote.commercial_accepted_at || new Date().toISOString();
+    quote.commercial_acceptance_reference = po.po_reference;
+    quote.client_po_submission_id = po.id;
+    req.store.audit(req.db, actor, "quotation", quote.id, "QUOTE_CLIENT_ACCEPTED", quoteBefore, quote);
+  }
+
   res.json({ success: true, data: po });
 };
 

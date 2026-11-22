@@ -12,6 +12,40 @@
  * - Internal bank credentials or GL cost-center codes
  */
 
+export const CLIENT_FORBIDDEN_KEYS = new Set([
+  "unit_cost_cents",
+  "cost_type",
+  "margin_percent",
+  "buy_rate",
+  "supplier_id",
+  "technician_id",
+  "technician_ids",
+  "assigned_technician_id",
+  "assigned_technician_ids",
+  "hourly_rate",
+  "internal_cost",
+  "margin",
+  "labor_cost",
+  "material_cost",
+  "equipment_cost",
+  "internal_notes",
+  "staff_notes",
+  "markup",
+  "artisan_rate",
+  "technician_rate",
+  "pay_rate"
+]);
+
+export function redactClientForbiddenFields(value) {
+  if (Array.isArray(value)) return value.map((item) => redactClientForbiddenFields(item));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !CLIENT_FORBIDDEN_KEYS.has(key))
+      .map(([key, entry]) => [key, redactClientForbiddenFields(entry)])
+  );
+}
+
 export function shapeQuoteForClient(doc) {
   if (!doc) return null;
   const { quote, client, lines, equipment, company_profile } = doc;
@@ -21,6 +55,7 @@ export function shapeQuoteForClient(doc) {
       quote_number: quote.quote_number,
       client_id: quote.client_id,
       status: quote.status,
+      commercial_acceptance_status: quote.commercial_acceptance_status || null,
       created_at: quote.created_at,
       sent_at: quote.sent_at || null,
       valid_until: quote.valid_until || null,
