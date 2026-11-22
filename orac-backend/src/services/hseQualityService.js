@@ -45,7 +45,7 @@ function riskRating(score) {
  * Creates a JSA for a dispatch/job.
  */
 export function createJsa({
-  dispatchId, jobDescription, siteLocation, assessedBy,
+  dispatchId, jobDescription, siteLocation, assessedBy, createdBy,
   hazardSteps, store, db
 }) {
   if (!dispatchId)      throw Object.assign(new Error("dispatchId is required"),      { status: 400 });
@@ -78,13 +78,14 @@ export function createJsa({
   });
 
   const maxScore = Math.max(...steps.map(s => s.risk_score));
+  const author = assessedBy || createdBy || null;
 
   const jsa = {
     id: `jsa_${crypto.randomBytes(8).toString("hex")}`,
     dispatch_id: dispatchId,
     job_description: jobDescription,
     site_location: siteLocation || null,
-    assessed_by: assessedBy || null,
+    assessed_by: author,
     status: "Draft",
     steps,
     overall_risk_score: maxScore,
@@ -98,7 +99,7 @@ export function createJsa({
   db.jsa_records.push(jsa);
 
   if (store && store.audit) {
-    store.audit(db, { id: assessedBy || "system" }, "jsa_records", jsa.id,
+    store.audit(db, { id: author || "system" }, "jsa_records", jsa.id,
       "JSA_CREATED", null, {
         dispatch_id: dispatchId, steps: steps.length,
         overall_risk: jsa.overall_risk_rating
@@ -111,16 +112,18 @@ export function createJsa({
 /**
  * Submit a JSA for approval.
  */
-export function submitJsa({ jsaId, userId, store, db }) {
+export function submitJsa({ jsaId, userId, submittedBy, store, db }) {
+  const actorId = userId || submittedBy || null;
   const jsa = findJsa(jsaId, db);
   if (jsa.status !== "Draft") {
     throw Object.assign(new Error(`Cannot submit a ${jsa.status} JSA`), { status: 409 });
   }
   jsa.status = "Submitted";
+  jsa.submitted_by = actorId;
   jsa.updated_at = new Date().toISOString();
 
   if (store && store.audit) {
-    store.audit(db, { id: userId }, "jsa_records", jsa.id, "JSA_SUBMITTED", null, null);
+    store.audit(db, { id: actorId || "system" }, "jsa_records", jsa.id, "JSA_SUBMITTED", null, null);
   }
   return jsa;
 }
@@ -133,7 +136,7 @@ export function approveJsa({ jsaId, approvedBy, store, db }) {
   if (jsa.status !== "Submitted") {
     throw Object.assign(new Error(`Cannot approve a ${jsa.status} JSA`), { status: 409 });
   }
-  if (jsa.assessed_by === approvedBy) {
+  if ((jsa.assessed_by && jsa.assessed_by === approvedBy) || (jsa.submitted_by && jsa.submitted_by === approvedBy)) {
     throw Object.assign(new Error("Self-approval of JSA is not allowed"), { status: 403 });
   }
 
@@ -217,6 +220,7 @@ export function createInspection({
   const items = checklistItems.map((item, i) => ({
     item_number: i + 1,
     description: item.description || `Check item ${i + 1}`,
+    is_critical: Boolean(item.is_critical || item.critical),
     result: null,            // set during inspection
     notes: null,
     inspected_at: null
@@ -293,10 +297,11 @@ export function submitInspection({ inspectionId, userId, store, db }) {
   // Compute verdict
   const failCount = inspection.items.filter(i => i.result === "fail").length;
   const passCount = inspection.items.filter(i => i.result === "pass").length;
+  const hasCriticalFailure = inspection.items.some(i => i.is_critical && i.result === "fail");
 
   if (failCount === 0) {
     inspection.verdict = "Pass";
-  } else if (failCount <= Math.ceil(inspection.items.length * 0.2)) {
+  } else if (!hasCriticalFailure && failCount <= Math.ceil(inspection.items.length * 0.2)) {
     inspection.verdict = "Conditional";
   } else {
     inspection.verdict = "Fail";
@@ -320,6 +325,9 @@ export function signOffInspection({ inspectionId, signedOffBy, store, db }) {
   const inspection = findInspection(inspectionId, db);
   if (inspection.status !== "Submitted") {
     throw Object.assign(new Error(`Cannot sign off a ${inspection.status} inspection`), { status: 409 });
+  }
+  if (inspection.inspector_id && inspection.inspector_id === signedOffBy) {
+    throw Object.assign(new Error("Cannot sign off your own inspection submission"), { status: 403 });
   }
 
   inspection.status = "Signed_Off";

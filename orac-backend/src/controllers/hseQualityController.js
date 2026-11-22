@@ -29,12 +29,22 @@ function getDb(req) {
   return req.db || req.store?.db || req.app?.locals?.store?.db || req.app?.locals?.db;
 }
 
+function resolveActor(req) {
+  if (!req.user?.id) {
+    const err = new Error("Authentication required");
+    err.status = 401;
+    throw err;
+  }
+  return req.user;
+}
+
 export function postCreateJsa(req, res) {
   try {
+    const actor = resolveActor(req);
     const db = getDb(req);
     const jsa = createJsa({
       dispatchId: req.body.dispatchId,
-      createdBy: req.user?.id || req.body.createdBy,
+      assessedBy: actor.id,
       jobDescription: req.body.jobDescription,
       location: req.body.location,
       hazardSteps: req.body.hazardSteps,
@@ -48,10 +58,11 @@ export function postCreateJsa(req, res) {
 
 export function postSubmitJsa(req, res) {
   try {
+    const actor = resolveActor(req);
     const db = getDb(req);
     const jsa = submitJsa({
       jsaId: req.params.id,
-      submittedBy: req.user?.id || req.body.submittedBy,
+      userId: actor.id,
       db,
     });
     res.json({ ok: true, jsa });
@@ -62,10 +73,16 @@ export function postSubmitJsa(req, res) {
 
 export function postApproveJsa(req, res) {
   try {
+    const actor = resolveActor(req);
+    const allowed = ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"].includes(actor.role);
+    if (!allowed) {
+      return res.status(403).json({ ok: false, error: "Not authorized to approve JSA" });
+    }
+
     const db = getDb(req);
     const jsa = approveJsa({
       jsaId: req.params.id,
-      approvedBy: req.user?.id || req.body.approvedBy,
+      approvedBy: actor.id,
       db,
     });
     res.json({ ok: true, jsa });
@@ -76,10 +93,16 @@ export function postApproveJsa(req, res) {
 
 export function postRejectJsa(req, res) {
   try {
+    const actor = resolveActor(req);
+    const allowed = ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"].includes(actor.role);
+    if (!allowed) {
+      return res.status(403).json({ ok: false, error: "Not authorized to reject JSA" });
+    }
+
     const db = getDb(req);
     const jsa = rejectJsa({
       jsaId: req.params.id,
-      rejectedBy: req.user?.id || req.body.rejectedBy,
+      rejectedBy: actor.id,
       reason: req.body.reason,
       db,
     });
@@ -104,10 +127,11 @@ export function getJsaCheck(req, res) {
 
 export function postCreateInspection(req, res) {
   try {
+    const actor = resolveActor(req);
     const db = getDb(req);
     const inspection = createInspection({
       dispatchId: req.body.dispatchId,
-      inspectorId: req.user?.id || req.body.inspectorId,
+      inspectorId: actor.id,
       inspectionType: req.body.inspectionType,
       checklistItems: req.body.checklistItems,
       db,
@@ -120,6 +144,7 @@ export function postCreateInspection(req, res) {
 
 export function postRecordResults(req, res) {
   try {
+    resolveActor(req);
     const db = getDb(req);
     const inspection = recordInspectionResults({
       inspectionId: req.params.id,
@@ -134,10 +159,11 @@ export function postRecordResults(req, res) {
 
 export function postSubmitInspection(req, res) {
   try {
+    const actor = resolveActor(req);
     const db = getDb(req);
     const inspection = submitInspection({
       inspectionId: req.params.id,
-      submittedBy: req.user?.id || req.body.submittedBy,
+      userId: actor.id,
       db,
     });
     res.json({ ok: true, inspection });
@@ -148,10 +174,16 @@ export function postSubmitInspection(req, res) {
 
 export function postSignOff(req, res) {
   try {
+    const actor = resolveActor(req);
+    const allowed = ["Admin", "Management", "Operations", "HSE & Quality"].includes(actor.role);
+    if (!allowed) {
+      return res.status(403).json({ ok: false, error: "Not authorized to sign off quality inspection" });
+    }
+
     const db = getDb(req);
     const inspection = signOffInspection({
       inspectionId: req.params.id,
-      signedOffBy: req.user?.id || req.body.signedOffBy,
+      signedOffBy: actor.id,
       db,
     });
     res.json({ ok: true, inspection });

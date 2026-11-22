@@ -213,9 +213,13 @@ export const reportIncident = (req, res) => {
 export const listIncidents = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"]);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician", "HSE & Quality"]);
     req.db.hse_incident_reports = req.db.hse_incident_reports || [];
-    return res.json({ success: true, data: req.db.hse_incident_reports });
+    const isElevated = ["Admin", "Management", "Operations", "Supervisor", "HSE & Quality"].includes(actor.role);
+    const incidents = isElevated
+      ? req.db.hse_incident_reports
+      : req.db.hse_incident_reports.filter((i) => i.reported_by === actor.id);
+    return res.json({ success: true, data: incidents });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ success: false, message: err.message });
   }

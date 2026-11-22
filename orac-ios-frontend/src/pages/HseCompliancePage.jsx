@@ -35,37 +35,37 @@ export default function HseCompliancePage({ user }) {
 
   // Forms
   const [ppeForm, setPpeForm] = useState({
-    dispatch_card_id: "DC-FIELD-001",
-    technician_id: user?.id || "u-tech-01",
-    technician_name: user?.name || "Lead Artisan",
-    site_location: "Zimplats SMC Selous",
-    hard_hat_pass: true,
-    metatarsal_boots_pass: true,
-    heavy_chemical_gloves_pass: true,
-    safety_glasses_pass: true,
-    high_vis_vest_pass: true,
-    respirator_mask_pass: true,
-    ear_protection_pass: true,
-    fall_arrest_harness_pass: true
+    dispatch_card_id: "",
+    technician_id: user?.id || "",
+    technician_name: user?.name || "",
+    site_location: "",
+    hard_hat_pass: false,
+    metatarsal_boots_pass: false,
+    heavy_chemical_gloves_pass: false,
+    safety_glasses_pass: false,
+    high_vis_vest_pass: false,
+    respirator_mask_pass: false,
+    ear_protection_pass: false,
+    fall_arrest_harness_pass: false
   });
 
   const [toolboxForm, setToolboxForm] = useState({
     talk_date: new Date().toISOString().slice(0, 10),
-    topic: "Rubber Lining Solvents and Chemical Fume Safety in Confined Slurry Chutes",
-    site_location: "Zimplats Concentrator",
-    attendeesText: "Brian Lupao, Tendai Moyo, Farai Zhou, Tafadzwa Ncube",
-    hazards_identified: "Solvent vapor accumulation (Chemlok primer), toxic fumes, low oxygen in confined chute",
-    control_measures: "Continuous forced air ventilation, organic vapor half-mask respirators, buddy watch"
+    topic: "",
+    site_location: "",
+    attendeesText: "",
+    hazards_identified: "",
+    control_measures: ""
   });
 
   const [incidentForm, setIncidentForm] = useState({
     incident_date: new Date().toISOString().slice(0, 10),
-    site_location: "Unki Mine Concentrator Plant",
+    site_location: "",
     severity: "NEAR_MISS",
-    description: "Slurry splash back while checking cyclone rubber liner wear. Splash shield deflected slurry safely.",
-    immediate_action_taken: "Inspected PPE visor and verified zero eye contact. Resumed work after tightening splash curtain.",
-    root_cause: "High pump pressure pulsation caused back-pressure through open inspection port.",
-    corrective_preventative_action: "Install double-valve isolation lock prior to opening cyclone inspection hatch."
+    description: "",
+    immediate_action_taken: "",
+    root_cause: "",
+    corrective_preventative_action: ""
   });
 
   async function loadAll() {
@@ -100,7 +100,7 @@ export default function HseCompliancePage({ user }) {
     setSuccessMsg("");
     try {
       await hse.recordPreDispatchPpe(ppeForm);
-      setSuccessMsg("Pre-dispatch PPE inspection verified and passed. Artisan authorized for field dispatch.");
+      setSuccessMsg("Pre-dispatch PPE inspection verified and recorded against dispatch card.");
       setPpeModalOpen(false);
       await loadAll();
     } catch (err) {
@@ -125,7 +125,7 @@ export default function HseCompliancePage({ user }) {
         talk_date: toolboxForm.talk_date,
         topic: toolboxForm.topic,
         site_location: toolboxForm.site_location,
-        attendees: attendees.length > 0 ? attendees : ["Artisan Crew"],
+        attendees,
         hazards_identified: toolboxForm.hazards_identified,
         control_measures: toolboxForm.control_measures
       });
@@ -146,7 +146,7 @@ export default function HseCompliancePage({ user }) {
     setSuccessMsg("");
     try {
       await hse.reportIncident(incidentForm);
-      setSuccessMsg("HSE Incident / Near-Miss report registered. Safety officer notified.");
+      setSuccessMsg("HSE Incident / Near-Miss report registered in safety compliance audit vault.");
       setIncidentModalOpen(false);
       await loadAll();
     } catch (err) {
