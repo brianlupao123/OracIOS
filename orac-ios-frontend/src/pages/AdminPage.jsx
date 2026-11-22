@@ -155,13 +155,8 @@ export default function AdminPage({ user }) {
       const payload = { ...profile };
       if (payload.quotation_tax_configuration) {
         payload.quotation_tax_configuration = {
-          tax_status: "taxable",
           ...payload.quotation_tax_configuration
         };
-        // Normalize tax_status if somehow empty
-        if (!payload.quotation_tax_configuration.tax_status) {
-          payload.quotation_tax_configuration.tax_status = "taxable";
-        }
       }
       const updated = await admin.updateCompanyProfile(payload);
       setProfile(updated);
@@ -510,10 +505,11 @@ export default function AdminPage({ user }) {
                       <label htmlFor="quotation-tax-status" className="mb-1 block text-ux-label font-semibold text-orac-text-primary">Tax treatment</label>
                       <select
                         id="quotation-tax-status"
-                        value={profile.quotation_tax_configuration?.tax_status || "taxable"}
+                        value={profile.quotation_tax_configuration?.tax_status || ""}
                         onChange={(e) => setProfile({ ...profile, quotation_tax_configuration: { ...(profile.quotation_tax_configuration || {}), tax_status: e.target.value } })}
                         className="w-full min-h-[44px] rounded-lg border border-orac-border-strong bg-orac-canvas px-3.5 py-2 text-ux-body text-orac-text-primary focus:border-orac-accent focus:outline-none focus:ring-2 focus:ring-orac-focus-ring/30"
                       >
+                        <option value="">Select tax treatment...</option>
                         <option value="taxable">Taxable</option>
                         <option value="zero-rated">Zero-rated</option>
                         <option value="exempt">Exempt</option>
@@ -533,7 +529,7 @@ export default function AdminPage({ user }) {
                           setProfile({
                             ...profile,
                             quotation_tax_configuration: {
-                              tax_status: profile.quotation_tax_configuration?.tax_status || "taxable",
+                              tax_status: profile.quotation_tax_configuration?.tax_status || "",
                               ...(profile.quotation_tax_configuration || {}),
                               applied_tax_rate: rawRate === "" ? null : Number(rawRate) / 100
                             }
@@ -551,7 +547,7 @@ export default function AdminPage({ user }) {
                       onChange={(e) => setProfile({
                         ...profile,
                         quotation_tax_configuration: {
-                          tax_status: profile.quotation_tax_configuration?.tax_status || "taxable",
+                          tax_status: profile.quotation_tax_configuration?.tax_status || "",
                           ...(profile.quotation_tax_configuration || {}),
                           approval_reference: e.target.value
                         }
@@ -567,7 +563,7 @@ export default function AdminPage({ user }) {
                       onChange={(e) => setProfile({
                         ...profile,
                         quotation_tax_configuration: {
-                          tax_status: profile.quotation_tax_configuration?.tax_status || "taxable",
+                          tax_status: profile.quotation_tax_configuration?.tax_status || "",
                           ...(profile.quotation_tax_configuration || {}),
                           approved: e.target.checked
                         }
@@ -712,15 +708,15 @@ export default function AdminPage({ user }) {
                 </div>
                 <div>
                   <label className="mb-1 block text-ux-caption font-semibold text-orac-text-muted">Normal ($/hr)</label>
-                  <Input name="hourly_rate" type="number" step="0.01" defaultValue={userModal.data?.hourly_rate ?? 1.06} />
+                  <Input name="hourly_rate" type="number" step="0.01" defaultValue={userModal.data?.hourly_rate ?? ""} placeholder="0.00" />
                 </div>
                 <div>
                   <label className="mb-1 block text-ux-caption font-semibold text-orac-text-muted">OT 1.5 ($/hr)</label>
-                  <Input name="ot_15_rate" type="number" step="0.01" defaultValue={userModal.data?.ot_15_rate ?? 1.59} />
+                  <Input name="ot_15_rate" type="number" step="0.01" defaultValue={userModal.data?.ot_15_rate ?? ""} placeholder="0.00" />
                 </div>
                 <div>
                   <label className="mb-1 block text-ux-caption font-semibold text-orac-text-muted">OT 2.0 ($/hr)</label>
-                  <Input name="ot_20_rate" type="number" step="0.01" defaultValue={userModal.data?.ot_20_rate ?? 2.12} />
+                  <Input name="ot_20_rate" type="number" step="0.01" defaultValue={userModal.data?.ot_20_rate ?? ""} placeholder="0.00" />
                 </div>
               </div>
             </div>
