@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { hse } from "../api/client.js";
-import DataTable from "../components/DataTable.jsx";
+import RegisterTable from "../components/RegisterTable.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import TabNav from "../components/TabNav.jsx";
@@ -8,6 +8,10 @@ import { ErrorBanner, PageLoadingSkeleton } from "../components/PageStates.jsx";
 import Button from "../components/ui/Button.jsx";
 import Badge from "../components/ui/Badge.jsx";
 import SectionTitle from "../components/ui/SectionTitle.jsx";
+import Field from "../components/ui/Field.jsx";
+import Input from "../components/ui/Input.jsx";
+
+const emptyAttendee = () => ({ technician_id: "", name: "", signature_present: false });
 
 const TABS = [
   { id: "overview", label: "Overview & Safety Metrics" },
@@ -53,7 +57,7 @@ export default function HseCompliancePage({ user }) {
     talk_date: new Date().toISOString().slice(0, 10),
     topic: "",
     site_location: "",
-    attendeesText: "",
+    attendees: [emptyAttendee()],
     hazards_identified: "",
     control_measures: ""
   });
@@ -116,10 +120,17 @@ export default function HseCompliancePage({ user }) {
     setError("");
     setSuccessMsg("");
     try {
-      const attendees = toolboxForm.attendeesText
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
+      const attendees = toolboxForm.attendees.map(attendee => ({
+        technician_id: attendee.technician_id.trim(),
+        name: attendee.name.trim(),
+        signature_present: attendee.signature_present
+      }));
+      if (attendees.some(attendee => !attendee.technician_id || !attendee.name)) {
+        throw new Error("Enter a technician ID and name for each attendee.");
+      }
+      if (new Set(attendees.map(attendee => attendee.technician_id)).size !== attendees.length) {
+        throw new Error("Record each technician only once for this talk.");
+      }
 
       await hse.createToolboxTalk({
         talk_date: toolboxForm.talk_date,
@@ -137,6 +148,12 @@ export default function HseCompliancePage({ user }) {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function updateToolboxAttendee(index, change) {
+    setToolboxForm(form => ({
+      ...form, attendees: form.attendees.map((attendee, i) => i === index ? { ...attendee, ...change } : attendee)
+    }));
   }
 
   async function handleReportIncident(e) {
@@ -183,7 +200,7 @@ export default function HseCompliancePage({ user }) {
         </div>
       )}
 
-      <TabNav tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <TabNav tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       {activeTab === "overview" && (
         <div role="tabpanel" aria-labelledby="tab-overview" className="space-y-6">
@@ -234,7 +251,7 @@ export default function HseCompliancePage({ user }) {
             </Button>
           </div>
 
-          <DataTable
+          <RegisterTable
             data={ppeList}
             keyField="id"
             columns={[
@@ -270,7 +287,7 @@ export default function HseCompliancePage({ user }) {
             </Button>
           </div>
 
-          <DataTable
+          <RegisterTable
             data={talks}
             keyField="id"
             columns={[
@@ -298,7 +315,7 @@ export default function HseCompliancePage({ user }) {
             </Button>
           </div>
 
-          <DataTable
+          <RegisterTable
             data={incidents}
             keyField="id"
             columns={[
@@ -324,7 +341,7 @@ export default function HseCompliancePage({ user }) {
 
       {/* PPE Inspection Modal */}
       {ppeModalOpen && (
-        <Modal title="Pre-Dispatch 8-Point PPE Inspection Gate (S-11)" onClose={() => setPpeModalOpen(false)}>
+        <Modal isOpen={ppeModalOpen} title="Pre-Dispatch 8-Point PPE Inspection Gate (S-11)" onClose={() => setPpeModalOpen(false)}>
           <form onSubmit={handleRecordPpe} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -472,7 +489,7 @@ export default function HseCompliancePage({ user }) {
 
       {/* Toolbox Talk Modal */}
       {toolboxModalOpen && (
-        <Modal title="Log Daily Toolbox Safety Talk" onClose={() => setToolboxModalOpen(false)}>
+        <Modal isOpen={toolboxModalOpen} title="Log Daily Toolbox Safety Talk" onClose={() => setToolboxModalOpen(false)}>
           <form onSubmit={handleCreateToolbox} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -508,16 +525,34 @@ export default function HseCompliancePage({ user }) {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Attendees (comma separated)</label>
-              <input
-                type="text"
-                required
-                value={toolboxForm.attendeesText}
-                onChange={(e) => setToolboxForm({ ...toolboxForm, attendeesText: e.target.value })}
-                className="mt-1 block w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white"
-              />
-            </div>
+            <fieldset className="space-y-3">
+              <legend className="text-ux-label">Attendees</legend>
+              {toolboxForm.attendees.map((attendee, index) => (
+                <div key={index} className="space-y-2 rounded-md border border-orac-border-default p-3">
+                  <Field id={`toolbox-attendee-id-${index}`} label="Attendee technician ID" required>
+                    <Input id={`toolbox-attendee-id-${index}`} required value={attendee.technician_id}
+                      onChange={event => updateToolboxAttendee(index, { technician_id: event.target.value })} />
+                  </Field>
+                  <Field id={`toolbox-attendee-name-${index}`} label="Attendee name" required>
+                    <Input id={`toolbox-attendee-name-${index}`} required value={attendee.name}
+                      onChange={event => updateToolboxAttendee(index, { name: event.target.value })} />
+                  </Field>
+                  <label className="inline-flex items-center gap-2">
+                    <Input type="checkbox" className="!w-auto" checked={attendee.signature_present}
+                      onChange={event => updateToolboxAttendee(index, { signature_present: event.target.checked })} />
+                    Signature on file
+                  </label>
+                  {toolboxForm.attendees.length > 1 && (
+                    <Button type="button" variant="ghost" onClick={() => setToolboxForm(form => ({
+                      ...form, attendees: form.attendees.filter((_, i) => i !== index)
+                    }))}>Remove attendee</Button>
+                  )}
+                </div>
+              ))}
+              <Button type="button" onClick={() => setToolboxForm(form => ({
+                ...form, attendees: [...form.attendees, emptyAttendee()]
+              }))}>Add attendee</Button>
+            </fieldset>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Hazards Identified</label>
@@ -555,7 +590,7 @@ export default function HseCompliancePage({ user }) {
 
       {/* Incident Report Modal */}
       {incidentModalOpen && (
-        <Modal title="Log HSE Incident / Near-Miss Report" onClose={() => setIncidentModalOpen(false)}>
+        <Modal isOpen={incidentModalOpen} title="Log HSE Incident / Near-Miss Report" onClose={() => setIncidentModalOpen(false)}>
           <form onSubmit={handleReportIncident} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>

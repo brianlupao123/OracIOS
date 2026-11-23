@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { procurement, inventory } from "../api/client.js";
-import DataTable from "../components/DataTable.jsx";
+import RegisterTable from "../components/RegisterTable.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import TabNav from "../components/TabNav.jsx";
@@ -271,7 +271,7 @@ export default function ProcurementPage({ user }) {
         </div>
       )}
 
-      <TabNav tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabNav tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       <div role="tabpanel" aria-labelledby={`tab-${activeTab}`} className="space-y-6">
         {/* TAB 1: OVERVIEW */}
@@ -324,7 +324,7 @@ export default function ProcurementPage({ user }) {
               <Button onClick={() => setPrModalOpen(true)}>+ Raise New PR</Button>
             </div>
 
-            <DataTable
+            <RegisterTable renderFromRow
               data={prs}
               keyField="id"
               columns={[
@@ -360,7 +360,7 @@ export default function ProcurementPage({ user }) {
               <Button onClick={() => setPoModalOpen(true)}>+ Create Supplier PO</Button>
             </div>
 
-            <DataTable
+            <RegisterTable renderFromRow
               data={pos}
               keyField="id"
               columns={[
@@ -386,7 +386,7 @@ export default function ProcurementPage({ user }) {
         {activeTab === "grns" && (
           <div className="space-y-4">
             <SectionTitle title="Goods Received Notes (GRN)" />
-            <DataTable
+            <RegisterTable renderFromRow
               data={grns}
               keyField="id"
               columns={[
@@ -410,7 +410,7 @@ export default function ProcurementPage({ user }) {
               <Button onClick={() => setSivModalOpen(true)}>+ Issue Store Voucher</Button>
             </div>
 
-            <DataTable
+            <RegisterTable renderFromRow
               data={sivs}
               keyField="id"
               columns={[

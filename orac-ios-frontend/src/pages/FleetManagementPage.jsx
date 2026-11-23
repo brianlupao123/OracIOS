@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fleet } from "../api/client.js";
-import DataTable from "../components/DataTable.jsx";
+import RegisterTable from "../components/RegisterTable.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import TabNav from "../components/TabNav.jsx";
@@ -184,7 +184,7 @@ export default function FleetManagementPage({ user }) {
         </div>
       )}
 
-      <TabNav tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabNav tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       <div role="tabpanel" aria-labelledby={`tab-${activeTab}`} className="space-y-6">
         {/* TAB 1: OVERVIEW */}
@@ -236,7 +236,7 @@ export default function FleetManagementPage({ user }) {
               <Button onClick={() => setVehicleModalOpen(true)}>+ Register Vehicle</Button>
             </div>
 
-            <DataTable
+            <RegisterTable renderFromRow
               data={vehicles}
               keyField="id"
               columns={[

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { artisans } from "../api/client.js";
-import DataTable from "../components/DataTable.jsx";
+import RegisterTable from "../components/RegisterTable.jsx";
 import Modal from "../components/Modal.jsx";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import TabNav from "../components/TabNav.jsx";
@@ -160,7 +160,7 @@ export default function ArtisanVaultPage({ user }) {
         </div>
       )}
 
-      <TabNav tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
+      <TabNav tabs={TABS} activeId={activeTab} onChange={setActiveTab} />
 
       {activeTab === "overview" && (
         <div role="tabpanel" aria-labelledby="tab-overview" className="space-y-6">
@@ -233,7 +233,7 @@ export default function ArtisanVaultPage({ user }) {
             </Button>
           </div>
 
-          <DataTable
+          <RegisterTable
             data={quals}
             keyField="id"
             columns={[
@@ -266,7 +266,7 @@ export default function ArtisanVaultPage({ user }) {
             </Button>
           </div>
 
-          <DataTable
+          <RegisterTable
             data={inductions}
             keyField="id"
             columns={[
@@ -373,7 +373,7 @@ export default function ArtisanVaultPage({ user }) {
 
       {/* Register Qualification Modal */}
       {qualModalOpen && (
-        <Modal title="Register Artisan Qualification in Vault" onClose={() => setQualModalOpen(false)}>
+        <Modal isOpen={qualModalOpen} title="Register Artisan Qualification in Vault" onClose={() => setQualModalOpen(false)}>
           <form onSubmit={handleCreateQual} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -492,7 +492,7 @@ export default function ArtisanVaultPage({ user }) {
 
       {/* Record Mine Induction Modal */}
       {indModalOpen && (
-        <Modal title="Record Mine Site Induction" onClose={() => setIndModalOpen(false)}>
+        <Modal isOpen={indModalOpen} title="Record Mine Site Induction" onClose={() => setIndModalOpen(false)}>
           <form onSubmit={handleRecordInd} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
