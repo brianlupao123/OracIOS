@@ -68,7 +68,7 @@ export function getTransportConfig() {
     port,
     secure,
     user,
-    pass,
+    hasPassword: Boolean(pass),
     from,
     dryRun,
     isConfigured,
@@ -442,7 +442,7 @@ export async function sendEmail({ to, toName = "", subject, body, html = null, a
     port: config.port,
     secure: config.secure,
     user: config.user,
-    pass: config.pass,
+    pass: process.env.SMTP_PASS || "",
     from: config.from,
     to,
     mimePayload: payload
