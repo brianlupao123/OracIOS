@@ -93,10 +93,12 @@ export async function sendQuotationPdfHandler(req, res) {
       resendReason: resend_reason,
       actor,
       store: req.store,
-      db: req.db
+      db: req.db,
+      checkpointWrite: req.checkpointWrite
     });
     return res.status(200).json({ success: true, data: result });
   } catch (err) {
+    if (err.saveSendOutcome === true) req.persistOnFailure = true;
     return sendError(res, err);
   }
 }

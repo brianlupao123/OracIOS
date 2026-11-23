@@ -32,6 +32,29 @@ export function persistenceMiddleware(store) {
       req.db = db;
       req.store = store;
       req.releaseDb = release;
+      // A side effect outside the database may need a durably saved reservation.
+      // Reacquire the write lock and return fresh state before continuing.
+      req.checkpointWrite = async () => {
+        if (isReadOnly || !context || released || writeStarted || res.destroyed) {
+          throw new Error("The request has no active write transaction.");
+        }
+        writeStarted = true;
+        try {
+          await store.write(req.db, context);
+          released = true;
+          if (res.destroyed) throw new Error("The request closed after saving the reservation.");
+          const fresh = await store.read({ lock: true });
+          context = fresh.release;
+          released = false;
+          req.db = fresh.db;
+          req.releaseDb = context;
+        } finally {
+          writeStarted = false;
+          if (res.destroyed) await safeRelease();
+        }
+        if (res.destroyed) throw new Error("The request closed after saving the reservation.");
+        return req.db;
+      };
       const originalJson = res.json.bind(res);
       const originalSend = res.send.bind(res);
       const originalEnd = res.end.bind(res);
@@ -50,14 +73,22 @@ export function persistenceMiddleware(store) {
         }
         if (writeStarted) return res;
         writeStarted = true;
-        Promise.resolve(store.write(db, context)).then(() => {
+        if (released) {
+          // The checkpoint committed, but acquiring the next transaction failed.
+          sendingResponse = true;
+          try { return send(...args); } finally { sendingResponse = false; }
+        }
+        Promise.resolve().then(() => store.write(req.db, context)).then(() => {
           released = true;
           if (!res.destroyed) {
             sendingResponse = true;
             send(...args);
             sendingResponse = false;
           }
-        }).catch((error) => Promise.resolve(safeRelease()).then(() => next(error), next));
+        }).catch((error) => {
+          writeStarted = false;
+          return Promise.resolve(safeRelease()).then(() => next(error), next);
+        });
         return res;
       };
 

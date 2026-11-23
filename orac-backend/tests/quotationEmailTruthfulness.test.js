@@ -1,6 +1,8 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
+import express from "express";
+import { persistenceMiddleware } from "../src/persistenceMiddleware.js";
 import { roles } from "../src/permissions.js";
 import {
   sendQuotationPdfEmail,
@@ -103,6 +105,66 @@ describe("Quotation email evidence is truthful (provider acceptance is not deliv
   });
   afterEach(() => { process.env = { ...originalEnv }; });
 
+  it("commits a reservation before sending and preserves it when saving acceptance fails", async () => {
+    let saved = makeDb();
+    let writes = 0;
+    let calls = 0;
+    const durableStore = {
+      async read() { return { db: structuredClone(saved), release: {} }; },
+      release() {},
+      write(next) {
+        if (++writes === 2) throw new Error("simulated outcome commit failure");
+        saved = structuredClone(next);
+      },
+      audit(state, _actor, _collection, _id, action) {
+        (state.audit_logs ||= []).push(action);
+      }
+    };
+    const app = express();
+    app.use(persistenceMiddleware(durableStore));
+    app.post("/send", async (req, res) => {
+      try {
+        const result = await send(req.db, req.store, async () => {
+          calls++;
+          assert.equal(saved.communication_evidence.at(-1)?.status, "send_attempted");
+          assert.ok(saved.audit_logs.includes("QUOTE_EMAIL_SEND_ATTEMPTED"));
+          return { success: true, mode: "live-smtp", messageId: "synthetic-id" };
+        }, { idempotencyKey: "fixture-reservation", checkpointWrite: req.checkpointWrite });
+        res.json(result);
+      } catch (err) {
+        req.persistOnFailure = err.saveSendOutcome === true;
+        res.status(err.status || 500).json({ code: err.code });
+      }
+    });
+    app.use((_err, _req, res, _next) => res.status(500).json({ code: "FIXTURE_COMMIT_FAILED" }));
+
+    const server = await new Promise((resolve, reject) => {
+      const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+      listener.once("error", reject);
+    });
+    try {
+      const post = () => fetch(`http://127.0.0.1:${server.address().port}/send`, { method: "POST" });
+      const first = await post();
+      assert.equal(first.status, 500);
+      assert.equal((await first.json()).code, "FIXTURE_COMMIT_FAILED");
+      assert.equal(saved.communication_evidence[0].status, "send_attempted");
+      const retry = await post();
+      assert.equal(retry.status, 409);
+      assert.equal((await retry.json()).code, "SEND_OUTCOME_UNRESOLVED");
+      assert.equal(calls, 1);
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  it("never contacts the transport if the reservation checkpoint fails", async () => {
+    const transport = acceptingTransport();
+    await assert.rejects(send(db, store, transport, {
+      checkpointWrite: async () => { throw new Error("simulated reservation failure"); }
+    }), { code: "SEND_RESERVATION_UNAVAILABLE" });
+    assert.equal(transport.calls.length, 0);
+  });
+
   // ── Acceptance versus delivery ────────────────────────────────────────
   describe("acceptance versus delivery", () => {
     it("records live SMTP success as 'accepted', never 'delivered', and the evidence really persists", async () => {
@@ -195,7 +257,7 @@ describe("Quotation email evidence is truthful (provider acceptance is not deliv
     it("real transport: SMTP not configured is a definitive failure (nothing left the process)", async () => {
       delete process.env.SMTP_HOST; delete process.env.SMTP_USER; delete process.env.SMTP_PASS;
       await assert.rejects(
-        sendQuotationPdfEmail({ quoteId: "q_1", recipientEmail: PILOT_A, actor: SALES, store, db }),
+        sendQuotationPdfEmail({ quoteId: "q_1", recipientEmail: PILOT_A, actor: SALES, store, db, checkpointWrite: async () => db }),
         { status: 503, code: "SMTP_UNCONFIGURED" }
       );
       assert.equal(rows(db)[0].status, "send_failed");
@@ -210,7 +272,7 @@ describe("Quotation email evidence is truthful (provider acceptance is not deliv
         SMTP_HOST: "127.0.0.1", SMTP_PORT: String(closedPort), SMTP_SECURE: "false",
         SMTP_USER: "u", SMTP_PASS: "not-a-real-password", SMTP_FROM: "pilot@example.test"
       });
-      await assert.rejects(sendQuotationPdfEmail({ quoteId: "q_1", recipientEmail: PILOT_A, actor: SALES, store, db }));
+      await assert.rejects(sendQuotationPdfEmail({ quoteId: "q_1", recipientEmail: PILOT_A, actor: SALES, store, db, checkpointWrite: async () => db }));
       assert.equal(rows(db)[0].status, "send_failed");
     });
   });

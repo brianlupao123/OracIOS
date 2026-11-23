@@ -105,13 +105,16 @@ describe("Communication Queue Service (Batch 2)", () => {
     assert.ok(actions.includes("MESSAGE_DISPATCHED_DRY_RUN"));
   });
 
-  it("processMessage in live mode throws 503 (no transport configured)", () => {
+  it("the quotation pilot switch cannot enable live queue dispatch", () => {
     process.env.COMMUNICATIONS_DRY_RUN = "false";
     const msg = createMessage({
       subject: "S", body: "B", recipientEmail: "a@b.com", createdBy: "u1", store, db
     });
     queueMessage({ messageId: msg.id, userId: "u1", store, db });
-    assert.throws(() => processMessage({ messageId: msg.id, userId: "u1", store, db }), { status: 503 });
+    const before = structuredClone(db);
+    assert.throws(() => processMessage({ messageId: msg.id, userId: "u1", store, db }),
+      { status: 503, code: "QUEUE_LIVE_SEND_DISABLED" });
+    assert.deepEqual(db, before);
   });
 
   it("failMessage transitions Queued → Failed with error and retry count", () => {

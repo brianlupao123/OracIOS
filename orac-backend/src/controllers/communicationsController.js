@@ -242,7 +242,7 @@ export async function dispatchQueueMessage(req, res) {
     });
     return res.json({ success: true, message: msg });
   } catch (err) {
-    return res.status(err.status || 500).json({ success: false, message: err.message });
+    return res.status(err.status || 500).json({ success: false, message: err.message, code: err.code });
   }
 }
 

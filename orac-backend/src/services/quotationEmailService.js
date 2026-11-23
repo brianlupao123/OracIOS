@@ -257,6 +257,7 @@ export async function sendQuotationPdfEmail({
   actor,
   store,
   db,
+  checkpointWrite,
   deps = {}
 }) {
   const transmit = deps.sendEmail || sendEmail;
@@ -301,6 +302,9 @@ export async function sendQuotationPdfEmail({
   const emailBody = body || `Dear ${recipientName || "Client"},\r\n\r\nPlease find attached quotation ${quote.quote_number || quote.id} from ORAC Industrial Services.\r\n\r\nBest regards,\r\nORAC Commercial Team`;
 
   const live = !getTransportConfig().dryRun;
+  if (live && !deps.sendEmail && typeof checkpointWrite !== "function") {
+    throw httpError(503, "SEND_RESERVATION_UNAVAILABLE", "Mail reservation storage is unavailable. Nothing was sent.");
+  }
   const recipientNorm = normalizeEmail(recipientEmail);
   const effectiveKey = idempotencyKey
     ? `client:${idempotencyKey}`
@@ -328,6 +332,11 @@ export async function sendQuotationPdfEmail({
       }
       if (inFlightAttempts.has(target.id)) {
         throw httpError(409, "SEND_IN_PROGRESS", "That send is still in progress; wait for its outcome before re-sending.", { evidenceId: target.id, status: target.status });
+      }
+      if (target.status === "send_attempted") {
+        throw httpError(409, "SEND_RESERVATION_REQUIRES_REVIEW",
+          "This send may still be in progress or may have been interrupted. An administrator must reconcile it before any resend.",
+          { evidenceId: target.id, status: target.status });
       }
       if (typeof resendReason !== "string" || resendReason.trim().length < 10) {
         throw httpError(400, "RESEND_REASON_REQUIRED", "resend_reason (at least 10 characters) is required to re-send after an uncertain attempt");
@@ -376,6 +385,16 @@ export async function sendQuotationPdfEmail({
   }
 
   // 8. Transmit
+  if (live && checkpointWrite) {
+    try {
+      db = await checkpointWrite();
+      const savedRow = sendEvidence(db, quote.id).find((entry) => entry.id === row.id);
+      if (savedRow?.status !== "send_attempted") throw new Error("Saved reservation was not found.");
+      row = savedRow;
+    } catch {
+      throw httpError(503, "SEND_RESERVATION_UNAVAILABLE", "The reservation could not be verified. Nothing was sent by this request.");
+    }
+  }
   inFlightAttempts.add(row.id);
   let sendResult;
   try {
@@ -411,14 +430,15 @@ export async function sendQuotationPdfEmail({
       row.audit_gap = "audit write failed while recording the send outcome";
     }
     if (uncertain) {
-      throw httpError(502, "SEND_OUTCOME_UNCERTAIN",
+      throw Object.assign(httpError(502, "SEND_OUTCOME_UNCERTAIN",
         "The mail server did not confirm this message and it may or may not have been sent. Do NOT send it again yet: check the sent mailbox first. Re-sending requires resend_of and resend_reason.",
-        { evidenceId: row.id, status: row.status, auditGap });
+        { evidenceId: row.id, status: row.status, auditGap }), { saveSendOutcome: !auditGap });
     }
     // Provider error text can echo credentials; never hand it back to the API caller raw.
     err.message = sanitizeAuditText(err.message);
     err.evidenceId = row.id;
     err.auditGap = auditGap;
+    err.saveSendOutcome = !auditGap;
     throw err;
   }
   inFlightAttempts.delete(row.id);

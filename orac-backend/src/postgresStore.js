@@ -41,8 +41,9 @@ export function createStore(_filePath, databasePool = pool) {
       }
 
       const releaseLock = await acquire();
-      const client = await databasePool.connect();
+      let client;
       try {
+        client = await databasePool.connect();
         await client.query("BEGIN");
         await client.query("SET LOCAL lock_timeout = '5s'");
         await client.query("SET LOCAL statement_timeout = '10s'");
@@ -53,9 +54,14 @@ export function createStore(_filePath, databasePool = pool) {
         const db = normalizeDb(result.rows[0].data, { seedDemoRecords: false });
         return { db, release: { client, releaseLock } };
       } catch (error) {
-        await client.query("ROLLBACK").catch(() => {});
-        client.release();
-        releaseLock();
+        try {
+          if (client) {
+            await client.query("ROLLBACK").catch(() => {});
+            client.release();
+          }
+        } finally {
+          releaseLock();
+        }
         throw error;
       }
     },

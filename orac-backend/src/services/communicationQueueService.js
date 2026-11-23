@@ -1,9 +1,5 @@
 import crypto from "node:crypto";
-import {
-  sendEmail,
-  isRecipientPermitted,
-  getTransportConfig
-} from "./communicationTransportService.js";
+import { isRecipientPermitted } from "./communicationTransportService.js";
 
 /**
  * Communication Queue Service — Batch 2 of 4.
@@ -12,7 +8,7 @@ import {
  * Default DRY_RUN=true: transitions to Dispatched and logs payload to audit
  * WITHOUT initiating any network connections.
  *
- * Zero sending risk in dry-run mode. No mail imports, no SMTP.
+ * The queue is dry-run only during the quotation PDF pilot.
  */
 
 const VALID_STATES = ["Draft", "Queued", "Dispatched", "Failed", "Cancelled"];
@@ -128,44 +124,10 @@ export function processMessage({ messageId, userId, store, db }) {
     return msg;
   }
 
-  // LIVE MODE: Check configuration first
-  const config = getTransportConfig();
-  if (!config.isConfigured) {
-    throw Object.assign(
-      new Error("Live sending is not configured. Configure SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASS) before setting COMMUNICATIONS_DRY_RUN=false."),
-      { status: 503 }
-    );
-  }
-
-  // Return a promise for the live sending operation
-  return (async () => {
-    try {
-      const sendResult = await sendEmail({
-        to: msg.recipient_email,
-        toName: msg.recipient_name,
-        subject: msg.subject,
-        body: msg.body,
-        attachments: msg.attachments
-      });
-
-      msg.status = "Dispatched";
-      msg.dispatched_at = new Date().toISOString();
-      msg.dry_run = false;
-      msg.provider_message_id = sendResult.messageId;
-
-      store.audit(db, { id: userId }, "communication_queue", msg.id,
-        "MESSAGE_DISPATCHED_LIVE", {
-          subject: msg.subject,
-          recipient_email: msg.recipient_email,
-          provider_message_id: sendResult.messageId
-        });
-
-      return msg;
-    } catch (err) {
-      failMessage({ messageId: msg.id, error: err.message, userId, store, db });
-      throw err;
-    }
-  })();
+  throw Object.assign(
+    new Error("Live email is unavailable from the communications queue. Use the approved quotation PDF send action."),
+    { status: 503, code: "QUEUE_LIVE_SEND_DISABLED" }
+  );
 }
 
 /**
