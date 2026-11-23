@@ -1,6 +1,7 @@
-import { test, describe, it, beforeEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { submitQuotationEmail } from "../src/quotationEmailFlow.js";
 
 // Polyfill import.meta.env and localStorage for testing client.js in Node.js
 const clientSource = readFileSync(new URL("../src/api/client.js", import.meta.url), "utf8")
@@ -100,82 +101,43 @@ describe("Quotation Direct Email Flow Frontend Integration", () => {
     }
   });
 
-  it("quotation flow does not transition to Sent when sendQuotationPdf fails", async () => {
-    let transitioned = false;
-    let recordedManualSend = false;
-
-    const fakeQuotesApi = {
-      transition: async () => { transitioned = true; }
-    };
-    const fakeCommunications = {
-      sendQuotationPdf: async () => {
-        const err = new Error("SMTP connection refused");
-        err.status = 503;
-        throw err;
-      },
-      recordExternalSend: async () => { recordedManualSend = true; }
-    };
-
-    // Simulate the exact confirmSendQuote flow from QuotationsPage
-    async function executeSendQuote(quote, client) {
-      const recipientEmail = client?.email;
-      if (!recipientEmail) throw new Error("Add client email");
-
-      // Attempt send
-      await fakeCommunications.sendQuotationPdf({
-        quote_id: quote.id,
-        recipient_email: recipientEmail
-      });
-
-      // ONLY transition after confirmation
-      await fakeQuotesApi.transition(quote.id, "Sent");
+  it("dry-run and invalid results never advance the quotation", async () => {
+    const pending = new Map();
+    const payload = { quote_id: "q1" };
+    const markSent = () => assert.fail("No confirmed live acceptance");
+    const dryRun = { mode: "dry-run", status: "dry_run" };
+    assert.equal(await submitQuotationEmail({ payload, pending, send: async () => dryRun, markSent }), dryRun);
+    for (const outcome of [undefined, { mode: "live-smtp" }, { mode: "live-smtp", status: "send_uncertain" }]) {
+      await assert.rejects(
+        submitQuotationEmail({ payload, pending, send: async () => outcome, markSent }),
+        /no confirmed send result/
+      );
     }
-
-    await assert.rejects(
-      async () => {
-        await executeSendQuote({ id: "q1" }, { email: "test@example.com" });
-      },
-      /SMTP connection refused/
-    );
-
-    assert.equal(transitioned, false, "Quote must NOT be transitioned to Sent after failed send");
-    assert.equal(recordedManualSend, false, "Manual external send must NOT be recorded after failed direct send");
+    await assert.rejects(submitQuotationEmail({
+      payload, pending, markSent, send: async () => { throw new Error("SMTP unavailable"); }
+    }), /SMTP unavailable/);
+    assert.equal(pending.size, 0);
   });
 
-  it("quotation flow transitions to Sent ONLY when sendQuotationPdf succeeds", async () => {
-    let transitioned = false;
-    let transitionedTo = "";
-
-    const fakeQuotesApi = {
-      transition: async (id, status) => {
-        transitioned = true;
-        transitionedTo = status;
+  it("after live acceptance a failed status save retries only the transition", async () => {
+    const pending = new Map();
+    const accepted = { mode: "live-smtp", status: "accepted", evidenceId: "e1" };
+    let sends = 0;
+    let writes = 0;
+    const operation = {
+      payload: { quote_id: "q1" }, pending,
+      send: async () => { sends += 1; return accepted; },
+      markSent: async (id) => {
+        assert.equal(id, "q1");
+        writes += 1;
+        if (writes === 1) throw new Error("Write failed");
       }
     };
-    const fakeCommunications = {
-      sendQuotationPdf: async () => ({
-        success: true,
-        mode: "live-smtp",
-        messageId: "msg_live_789"
-      })
-    };
-
-    async function executeSendQuote(quote, client) {
-      const recipientEmail = client?.email;
-      if (!recipientEmail) throw new Error("Add client email");
-
-      const sendResult = await fakeCommunications.sendQuotationPdf({
-        quote_id: quote.id,
-        recipient_email: recipientEmail
-      });
-
-      await fakeQuotesApi.transition(quote.id, "Sent");
-      return sendResult;
-    }
-
-    const result = await executeSendQuote({ id: "q1" }, { email: "lupaobrian98@gmail.com" });
-    assert.equal(result.success, true);
-    assert.equal(transitioned, true);
-    assert.equal(transitionedTo, "Sent");
+    await assert.rejects(submitQuotationEmail(operation), /without sending another email/);
+    assert.equal(pending.get("q1"), accepted);
+    assert.equal(await submitQuotationEmail(operation), accepted);
+    assert.equal(sends, 1);
+    assert.equal(writes, 2);
+    assert.equal(pending.size, 0);
   });
 });

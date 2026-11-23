@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { admin, assistant, collections, communications, documents, quotes as quotesApi } from "../api/client.js";
 import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import Modal from "../components/Modal.jsx";
 import RecordAnalysisModal from "../components/RecordAnalysisModal.jsx";
 import EmailPreviewModal from "../components/EmailPreviewModal.jsx";
 import QuotationEmailRecovery from "../components/QuotationEmailRecovery.jsx";
+import { submitQuotationEmail } from "../quotationEmailFlow.js";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { ICONS } from "../components/icons.jsx";
 import { ErrorBanner, PageEmptyState, PageLoadingSkeleton } from "../components/PageStates.jsx";
@@ -88,6 +89,7 @@ export default function QuotationsPage({ user }) {
   const [approvalExceptionError, setApprovalExceptionError] = useState("");
   const [filterMode, setFilterMode] = useState("all");
   const [emailPreviewQuote, setEmailPreviewQuote] = useState(null);
+  const pendingQuoteStatus = useRef(new Map());
   const isManagement = user?.role === "Management";
   const v5Visible = v5CommercialEnabled() && ["Sales", "Admin"].includes(user.role);
   const analysisVisible = recordAnalysisVisible();
@@ -303,7 +305,9 @@ export default function QuotationsPage({ user }) {
     try {
       const client = clients.find((c) => c.id === quote.client_id);
       const recipientEmail = client?.email || client?.contact_email;
-      if (!recipientEmail) throw new Error("Add a client email address before sending quotation.");
+      if (!recipientEmail && !pendingQuoteStatus.current.has(quote.id)) {
+        throw new Error("Add a client email address before sending quotation.");
+      }
 
       const subject = `ORAC Quotation ${quote.quote_number || quote.id} — ${clientName(quote.client_id)}`;
       const body = [
@@ -321,20 +325,23 @@ export default function QuotationsPage({ user }) {
         "Industrial Equipment Solutions"
       ].filter(Boolean).join("\n");
 
-      // Transmit directly via backend SMTP endpoint with generated quotation PDF
-      const sendResult = await communications.sendQuotationPdf({
-        quote_id: quote.id,
-        recipient_email: recipientEmail,
-        recipient_name: client?.name || quote.client_name || "",
-        subject,
-        body
+      const sendResult = await submitQuotationEmail({
+        payload: {
+          quote_id: quote.id,
+          recipient_email: recipientEmail,
+          recipient_name: client?.name || quote.client_name || "",
+          subject,
+          body
+        },
+        pending: pendingQuoteStatus.current,
+        send: communications.sendQuotationPdf,
+        markSent: (quoteId) => quotesApi.transition(quoteId, "Sent")
       });
 
-      // ONLY transition quote to "Sent" after backend confirms SMTP acceptance
-      await quotesApi.transition(quote.id, "Sent");
       setEmailPreviewQuote(null);
-      const modeDesc = sendResult?.mode === "live-smtp" ? "Live SMTP relay" : "Direct send (dry-run mode)";
-      setNotice(`${quote.quote_number || quote.id} was dispatched to ${recipientEmail} via ${modeDesc} (Message ID: ${sendResult?.messageId || "accepted"}). Note: Actual inbox receipt is verified separately.`);
+      setNotice(sendResult.status === "dry_run"
+        ? "Dry run complete. No email was sent. The quotation status is unchanged."
+        : `${quote.quote_number || quote.id} marked Sent. The mail server accepted the email. Inbox receipt is recorded separately.`);
       await load();
     } catch (err) {
       setError(err.message || "Failed to send quotation email.");
@@ -904,7 +911,7 @@ export default function QuotationsPage({ user }) {
       <EmailPreviewModal
         isOpen={Boolean(emailPreviewQuote)}
         onClose={() => setEmailPreviewQuote(null)}
-        recipient={emailPreviewQuote ? (clients.find((c) => c.id === emailPreviewQuote.client_id)?.email || clients.find((c) => c.id === emailPreviewQuote.client_id)?.contact_email || "No client email on file") : ""}
+        recipient={emailPreviewQuote ? (pendingQuoteStatus.current.get(emailPreviewQuote.id)?.recipientEmail || clients.find((c) => c.id === emailPreviewQuote.client_id)?.email || clients.find((c) => c.id === emailPreviewQuote.client_id)?.contact_email || "No client email on file") : ""}
         subject={emailPreviewQuote ? `ORAC Quotation ${emailPreviewQuote.quote_number || emailPreviewQuote.id} — ${clientName(emailPreviewQuote.client_id)}` : ""}
         bodyText={emailPreviewQuote ? [
           `Dear ${clientName(emailPreviewQuote.client_id)},`,
@@ -924,7 +931,7 @@ export default function QuotationsPage({ user }) {
         docType="Quotation"
         onDownloadDocument={() => documents.download("quotes", emailPreviewQuote.id)}
         onConfirmSend={confirmSendQuote}
-        confirmLabel="Send quotation email via ORAC"
+        confirmLabel={pendingQuoteStatus.current.has(emailPreviewQuote?.id) ? "Retry saving quotation status" : "Send quotation email via ORAC"}
         directSend={true}
       />
     </div>
