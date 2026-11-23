@@ -14,11 +14,11 @@ export function persistenceMiddleware(store) {
     let writeStarted = false;
     let sendingResponse = false;
 
-    // Read-only by exact match: login, and the Worksheet roll-up preview (it computes and returns,
-    // so it must never take the write lock or rewrite the store). Look-alike paths still persist.
+    // These exact POST paths return data without writing to the store.
     const isReadOnly = (["GET", "HEAD", "OPTIONS"].includes(req.method) && !isAuditedRead(req))
       || (req.method === "POST" && ((req.path === "/auth/login" && !process.env.ORAC_TOTP_PROTECTED_ROLES)
-        || req.path === "/worksheet_registers/preview"));
+        || req.path === "/worksheet_registers/preview"
+        || req.path === "/public/google-profile"));
 
     const safeRelease = async () => {
       if (writeStarted || released) return;

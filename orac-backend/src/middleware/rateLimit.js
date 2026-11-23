@@ -112,6 +112,7 @@ export function normalizedEmail(req) {
 export const PUBLIC_WRITE_ROUTES = [
   "POST /leads",
   "POST /public/enquiries",
+  "POST /public/google-profile",
   "POST /auth/request-password-reset",
   "POST /auth/reset-password",
   "POST /auth/totp/verify",

@@ -42,7 +42,7 @@ async function fetchGoogleCerts() {
   const now = Date.now();
   if (cachedCerts && now < certsExpireAt) return cachedCerts;
 
-  const res = await fetch(GOOGLE_CERTS_URL);
+  const res = await fetch(GOOGLE_CERTS_URL, { signal: AbortSignal.timeout(5000) });
   if (!res.ok) throw new Error(`Google JWKS fetch failed: ${res.status}`);
 
   const cacheControl = res.headers.get("cache-control") || "";
@@ -50,7 +50,7 @@ async function fetchGoogleCerts() {
   const ttl = maxAgeMatch ? Number(maxAgeMatch[1]) * 1000 : 3600_000;
 
   const { keys } = await res.json();
-  const certMap = {};
+  const certMap = Object.create(null);
   for (const key of keys) {
     if (key.kty === "RSA" && key.use === "sig") {
       // Build PEM from JWK n/e
@@ -133,7 +133,7 @@ export async function verifyGoogleIdToken(idToken) {
   }
 
   const clientId = config.googleClientId;
-  if (!clientId) {
+  if (!clientId || clientId === process.env.PUBLIC_GOOGLE_CLIENT_ID?.trim()) {
     throw Object.assign(new Error("Google SSO is not configured."), { status: 503 });
   }
 
@@ -144,6 +144,21 @@ export async function verifyGoogleIdToken(idToken) {
     if (localErr.status) throw localErr; // Claim validation failures should not fall through.
     return await verifyIdTokenRemote(idToken, clientId);
   }
+}
+
+export async function verifyPublicGoogleProfile(idToken, clientId) {
+  const payload = await verifyIdTokenLocal(idToken, clientId);
+  const email = typeof payload.email === "string" ? payload.email.trim() : "";
+  if (!Number.isFinite(payload.exp) || payload.exp <= Date.now() / 1000
+    || typeof payload.sub !== "string" || !payload.sub.trim()
+    || payload.email_verified !== true || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Invalid Google profile claims.");
+  }
+
+  return {
+    name: typeof payload.name === "string" ? payload.name.trim().slice(0, 120) : "",
+    email
+  };
 }
 
 /**

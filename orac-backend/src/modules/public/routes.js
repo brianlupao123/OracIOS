@@ -3,6 +3,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.js";
 import { idempotencyKeyMiddleware } from "../../idempotency.js";
+import { getPublicGoogleProfile } from "./controllers/googleProfileController.js";
 import {
   getPublicSlots,
   createWebsiteEnquiry,
@@ -17,6 +18,7 @@ const router = Router();
 // ── Public (no auth) ──
 router.get("/public/slots", getPublicSlots);
 router.post("/public/enquiries", idempotencyKeyMiddleware, createWebsiteEnquiry);
+router.post("/public/google-profile", getPublicGoogleProfile);
 
 // ── Staff booking management (auth required) ──
 router.get("/bookings/settings", authMiddleware, getBookingSettings);
