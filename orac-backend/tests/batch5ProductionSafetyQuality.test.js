@@ -154,7 +154,8 @@ test("Batch 5: Clean UI Defaults in HseCompliancePage.jsx", () => {
   assert.match(content, /dispatch_card_id:\s*""/);
   assert.match(content, /site_location:\s*""/);
   assert.match(content, /topic:\s*""/);
-  assert.match(content, /attendeesText:\s*""/);
+  assert.match(content, /attendees:\s*\[emptyAttendee\(\)\]/);
+  assert.match(content, /const emptyAttendee = \(\) => \(\{\s*technician_id:\s*"",\s*name:\s*"",\s*signature_present:\s*false\s*\}\)/);
   assert.match(content, /description:\s*""/);
 
   // No fake sample defaults
