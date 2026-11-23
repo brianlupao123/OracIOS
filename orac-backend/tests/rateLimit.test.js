@@ -143,6 +143,10 @@ test("the limiter's route table equals the public write routes declared in route
   const src = readFileSync(new URL("../src/router.js", import.meta.url), "utf8").replace(/\r/g, "");
   const publicSection = src.slice(0, src.indexOf("router.use(authMiddleware)"));
   const found = [...publicSection.matchAll(/^router\.(post|put|patch|delete)\("([^"]+)"/gm)].map((m) => `${m[1].toUpperCase()} ${m[2]}`);
+  const publicModule = readFileSync(new URL("../src/modules/public/routes.js", import.meta.url), "utf8");
+  for (const match of publicModule.matchAll(/^router\.(post|put|patch|delete)\("(\/public\/[^"]+)"/gm)) {
+    found.push(`${match[1].toUpperCase()} ${match[2]}`);
+  }
   const expected = PUBLIC_WRITE_ROUTES.concat("POST /auth/login").sort();
   assert.deepEqual(found.sort(), expected, "a new unauthenticated write route must be added to PUBLIC_WRITE_ROUTES");
 });

@@ -2,6 +2,7 @@
 // A website visitor becomes a LEAD (never a Client). Sales verifies it and then uses IOS's normal pipeline.
 import crypto from "node:crypto";
 import { hasPermission, requirePermission } from "../../../permissions.js";
+import { buildKeyRecord, findActiveKey, pruneExpiredKeys } from "../../../idempotency.js";
 import { validate } from "../booking/validateEnquiry.js";
 import { toLead } from "../booking/leadMapper.js";
 import { bookSlot, checkBooking, ensureBookingState, getSchedule, publicAvailability, saveSchedule, setSlotStatus } from "../booking/bookingState.js";
@@ -29,6 +30,20 @@ export function createWebsiteEnquiry(req, res) {
   if (errors.length) return res.status(400).json({ success: false, message: errors.join(" ") });
 
   const nowMs = clock(req);
+  const scope = "POST /api/public/enquiries";
+  const key = req.idempotencyKey;
+  const requestHash = key && crypto.createHash("sha256").update(JSON.stringify(record)).digest("hex");
+  if (key) {
+    const existing = findActiveKey(req.db, scope, key, nowMs);
+    if (existing) {
+      if (existing.request_hash !== requestHash) {
+        return res.status(409).json({ success: false, code: "IDEMPOTENCY_KEY_CONFLICT",
+          message: "This request key belongs to different enquiry details." });
+      }
+      res.set("Idempotent-Replay", "true");
+      return res.status(existing.status_code).json(existing.response);
+    }
+  }
   const reference = crypto.randomBytes(4).toString("hex").toUpperCase();
   const store = req.store;
   const leadId = store.id("lead");
@@ -49,10 +64,16 @@ export function createWebsiteEnquiry(req, res) {
   req.db.leads.push(lead);
   store.audit(req.db, null, "lead", lead.id, "LEAD_CREATED", null, lead); // null actor -> "system"; also notifies Sales/Admin/Management
 
-  res.json({
+  const response = {
     success: true,
     data: { reference, slot: booking ? { date: booking.slot_date, time: booking.slot_time, status: booking.slot_status } : null },
-  });
+  };
+  if (key) {
+    pruneExpiredKeys(req.db, nowMs);
+    req.db.idempotency_keys.push(buildKeyRecord({ scope, key, requestHash, leadId,
+      statusCode: 200, response, nowMs }));
+  }
+  res.json(response);
 }
 
 // ---------------------------------------------------------------- staff (after authMiddleware)

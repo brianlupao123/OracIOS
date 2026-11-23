@@ -2,6 +2,7 @@
 // Staff booking management uses the standard auth middleware.
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/auth.js";
+import { idempotencyKeyMiddleware } from "../../idempotency.js";
 import {
   getPublicSlots,
   createWebsiteEnquiry,
@@ -15,7 +16,7 @@ const router = Router();
 
 // ── Public (no auth) ──
 router.get("/public/slots", getPublicSlots);
-router.post("/public/enquiries", createWebsiteEnquiry);
+router.post("/public/enquiries", idempotencyKeyMiddleware, createWebsiteEnquiry);
 
 // ── Staff booking management (auth required) ──
 router.get("/bookings/settings", authMiddleware, getBookingSettings);

@@ -111,6 +111,7 @@ export function normalizedEmail(req) {
 // A regression test compares this table with the public section of router.js.
 export const PUBLIC_WRITE_ROUTES = [
   "POST /leads",
+  "POST /public/enquiries",
   "POST /auth/request-password-reset",
   "POST /auth/reset-password",
   "POST /auth/totp/verify",
