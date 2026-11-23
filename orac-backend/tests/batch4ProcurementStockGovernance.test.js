@@ -222,6 +222,12 @@ test("Batch 4: Goods Receipt (GRN) — over-receipt refused & partial receipt st
     db,
     store: mockStore
   };
+  const beforeRefusal = structuredClone(db);
+  const refused = mockRes();
+  receiveGrn({ ...reqPartial, user: { id: "u_tech" } }, refused);
+  assert.equal(refused.statusCode, 403);
+  assert.deepEqual(db, beforeRefusal);
+
   const resPartial = mockRes();
   receiveGrn(reqPartial, resPartial);
   assert.equal(resPartial.statusCode, 201);

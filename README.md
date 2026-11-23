@@ -7,9 +7,11 @@
 
 ## Current candidate and handoff
 
-Local baseline `ad0f985` on `batch-7-production-reconciliation-handover`, verified 23 November 2026. The quotation send-reservation fix passed 89 focused tests and three isolated PostgreSQL checks using simulated email. The Admin queue cannot dispatch live mail. Controlled inbox receipt and company acceptance remain open.
+Local baseline `8dd08a0` on `batch-7-production-reconciliation-handover`, verified 23 November 2026. The quotation send-reservation fix passed 89 focused tests and three isolated PostgreSQL checks using simulated email. The Admin queue cannot dispatch live mail. Controlled inbox receipt and company acceptance remain open.
 
-The current working tree adds **Quotation email recovery** to Admin's Quotations page. Admins can record confirmed receipt or verified provider non-acceptance against the original attempt. Unknown outcomes stay blocked. The replacement uses the current quotation PDF and the original recipient. Four isolated PostgreSQL checks passed with simulated email, including reconnect and concurrent resend protection. The live inbox pilot remains a release gate. After recording the recovery patch in Git, verify the Procurement & Stores portal journey, including goods receipt and server-side refusal. Repeat for Fleet & Facilities, HSE & Quality and Human Resources. Test Public Prospect on the separate public website.
+Commit `8dd08a0` adds **Quotation email recovery** to Admin's Quotations page. Admins can record confirmed receipt or verified provider non-acceptance against the original attempt. Unknown outcomes stay blocked. Four isolated PostgreSQL checks passed with simulated email, including reconnect and concurrent resend protection.
+
+The Procurement receipt change in the working tree shows outstanding quantities and requires the actual delivery reference and quantities. A local JSON fixture verified onboarding, login and navigation rules for 12 internal roles. It also verified goods receipt, vehicle registration, a toolbox talk and an artisan qualification through the specialist APIs, with cross-role refusals. The specialist desktop and mobile click-throughs and the public website journey remain open.
 
 Record the commit, checkout status, test environment and evidence when handing work to another agent. Recheck current Git and provider build identities before relying on a dated handover or the service inventory below.
 

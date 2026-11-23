@@ -80,3 +80,30 @@ test("ProcurementPage source code adheres to ORAC architecture and tripwires", (
   // Currency adheres to USD
   assert.match(src, /USD \$/);
 });
+
+test("goods receipt uses the remaining balance and requires actual delivery information", async () => {
+  const { buildReceiptPayload, canReceiveSupplierOrder, openReceiptLines } = await import("../src/procurementReceipt.js");
+  const order = { id: "po-1", status: "PARTIALLY_RECEIVED", items: [
+    { item_code: "A", quantity: 10 }, { item_code: "B", quantity: 2 }
+  ] };
+  const receipts = [
+    { supplier_po_id: order.id, items: [{ item_code: "A", received_quantity: 3 }, { item_code: "B", received_quantity: 2 }] },
+    { supplier_po_id: order.id, items: [{ item_code: "A", received_quantity: 1 }] },
+    { supplier_po_id: "other", items: [{ item_code: "A", received_quantity: 5 }] }
+  ];
+  assert.equal(canReceiveSupplierOrder("Procurement & Stores", order), true);
+  assert.equal(canReceiveSupplierOrder("Operations", order), true);
+  assert.equal(canReceiveSupplierOrder("Technician", order), false);
+  assert.equal(canReceiveSupplierOrder("Admin", { ...order, status: "RECEIVED" }), false);
+  const items = openReceiptLines(order, receipts);
+  assert.deepEqual(items.map(item => [item.item_code, item.remaining, item.received_quantity]), [["A", 6, 0]]);
+  const form = { delivery_note_ref: " DN-32 ", items };
+  assert.throws(() => buildReceiptPayload(form), /actually delivered/);
+  items[0].received_quantity = 7;
+  assert.throws(() => buildReceiptPayload(form), /outstanding/);
+  items[0].received_quantity = 6;
+  const payload = buildReceiptPayload(form);
+  assert.equal(payload.delivery_note_ref, "DN-32");
+  assert.equal(payload.items[0].received_quantity, 6);
+  assert.equal("remaining" in payload.items[0], false);
+});

@@ -8,6 +8,7 @@ import { ErrorBanner, PageLoadingSkeleton } from "../components/PageStates.jsx";
 import Button from "../components/ui/Button.jsx";
 import Badge from "../components/ui/Badge.jsx";
 import SectionTitle from "../components/ui/SectionTitle.jsx";
+import { canReceiveSupplierOrder, openReceiptLines, buildReceiptPayload } from "../procurementReceipt.js";
 
 const TABS = [
   { id: "overview", label: "Overview & Metrics" },
@@ -34,6 +35,7 @@ export default function ProcurementPage({ user }) {
   const [prs, setPrs] = useState([]);
   const [pos, setPos] = useState([]);
   const [grns, setGrns] = useState([]);
+  const [grnsAvailable, setGrnsAvailable] = useState(false);
   const [sivs, setSivs] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [stockItems, setStockItems] = useState([]);
@@ -98,7 +100,7 @@ export default function ProcurementPage({ user }) {
         procurement.getSummary().catch(() => null),
         procurement.listRequests().catch(() => []),
         procurement.listSupplierPos().catch(() => []),
-        procurement.listGrns().catch(() => []),
+        procurement.listGrns().catch(() => null),
         procurement.listStoreIssueVouchers().catch(() => []),
         inventory.listSuppliers().catch(() => []),
         inventory.listStockItems().catch(() => [])
@@ -108,6 +110,7 @@ export default function ProcurementPage({ user }) {
       setPrs(prsRes || []);
       setPos(posRes || []);
       setGrns(grnsRes || []);
+      setGrnsAvailable(Array.isArray(grnsRes));
       setSivs(sivsRes || []);
       setSuppliers(supsRes || []);
       setStockItems(stocksRes || []);
@@ -174,18 +177,12 @@ export default function ProcurementPage({ user }) {
   // Handlers for GRN
   function openGrnModalForPo(selectedPoId) {
     const po = pos.find((p) => p.id === selectedPoId);
-    if (!po) return;
+    if (!canReceiveSupplierOrder(user?.role, po) || !grnsAvailable) return;
     setGrnForm({
       supplier_po_id: po.id,
-      delivery_note_ref: `DN-${Date.now().toString().slice(-5)}`,
+      delivery_note_ref: "",
       received_date: new Date().toISOString().slice(0, 10),
-      items: po.items.map((it) => ({
-        item_code: it.item_code,
-        received_quantity: it.quantity,
-        rejected_quantity: 0,
-        rejection_reason: "",
-        storage_location: "Central Stores"
-      }))
+      items: openReceiptLines(po, grns)
     });
     setGrnModalOpen(true);
   }
@@ -195,8 +192,8 @@ export default function ProcurementPage({ user }) {
     setSubmitting(true);
     setError("");
     try {
-      await procurement.receiveGrn(grnForm);
-      setSuccessMsg("Goods Received Note logged and inventory stock balance updated.");
+      await procurement.receiveGrn(buildReceiptPayload(grnForm));
+      setSuccessMsg("Goods Received Note recorded.");
       setGrnModalOpen(false);
       await loadAll();
     } catch (err) {
@@ -374,9 +371,11 @@ export default function ProcurementPage({ user }) {
                 { key: "total_amount", title: "Total Amount", render: (r) => formatCurrency(r.total_amount) },
                 { key: "expected_delivery_date", title: "Expected Delivery" },
                 { key: "actions", title: "Actions", render: (r) => (
-                  r.status !== "RECEIVED" ? (
-                    <Button size="sm" variant="outline" onClick={() => openGrnModalForPo(r.id)}>Receive GRN</Button>
-                  ) : <span className="text-xs text-emerald-600 font-medium">Fulfilled</span>
+                  canReceiveSupplierOrder(user?.role, r) ? (
+                    grnsAvailable
+                      ? <Button size="sm" onClick={() => openGrnModalForPo(r.id)}>Receive goods</Button>
+                      : <span>Receipt history unavailable. Refresh before receiving goods.</span>
+                  ) : r.status === "RECEIVED" ? <span className="text-xs text-emerald-600 font-medium">Fulfilled</span> : null
                 )}
               ]}
             />
@@ -814,13 +813,16 @@ export default function ProcurementPage({ user }) {
 
           {grnForm.items.map((it, idx) => (
             <div key={idx} className="p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
-              <span className="text-xs font-bold text-gray-800">Item: {it.item_code}</span>
+              <span className="text-xs font-bold text-gray-800">Item: {it.item_code} · Outstanding: {it.remaining}</span>
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-600">Accepted Qty</label>
                   <input
                     type="number"
                     className="w-full border border-gray-300 rounded p-1 text-sm"
+                    min="0"
+                    max={it.remaining}
+                    step="any"
                     value={it.received_quantity}
                     onChange={(e) => {
                       const items = [...grnForm.items];
@@ -835,6 +837,8 @@ export default function ProcurementPage({ user }) {
                   <input
                     type="number"
                     className="w-full border border-gray-300 rounded p-1 text-sm"
+                    min="0"
+                    step="any"
                     value={it.rejected_quantity}
                     onChange={(e) => {
                       const items = [...grnForm.items];
