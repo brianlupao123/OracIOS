@@ -105,7 +105,9 @@ export function getTimeline(req, res) {
     if (!entityType || !entityId) {
       return res.status(400).json({ success: false, message: "entityType and entityId are required." });
     }
-    const timeline = getEntityCommunicationTimeline({ entityType, entityId, db: req.db });
+    const timeline = getEntityCommunicationTimeline({
+      entityType, entityId, db: req.db, includeRecovery: req.user?.role === "Admin"
+    });
     const stats = getEntityCommunicationStats({ entityType, entityId, db: req.db });
     return res.json({ success: true, stats, timeline });
   } catch (err) {

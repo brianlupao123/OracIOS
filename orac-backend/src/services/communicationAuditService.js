@@ -317,7 +317,7 @@ export function getEntityEvidenceHistory({ entityType, entityId, db }) {
  * Returns a unified timeline of all communications AND evidence for an
  * entity, interleaved by date. Each entry has { type, timestamp, ...data }.
  */
-export function getEntityCommunicationTimeline({ entityType, entityId, db }) {
+export function getEntityCommunicationTimeline({ entityType, entityId, db, includeRecovery = false }) {
   const messages = getEntityCommunicationHistory({ entityType, entityId, db })
     .map(m => ({
       type: "queue_message",
@@ -341,7 +341,15 @@ export function getEntityCommunicationTimeline({ entityType, entityId, db }) {
       subject: e.subject,
       recipient_email: e.recipient_email,
       channel: e.channel,
-      notes: e.notes
+      notes: e.notes,
+      ...(includeRecovery && e.send_kind === "quotation_pdf" ? {
+        send_kind: e.send_kind,
+        transport_mode: e.transport_mode,
+        recipient_name: e.recipient_name,
+        recorded_at: e.recorded_at,
+        supersedes: e.supersedes || null,
+        recovery: e.recovery || null
+      } : {})
     }));
 
   return [...messages, ...evidence]

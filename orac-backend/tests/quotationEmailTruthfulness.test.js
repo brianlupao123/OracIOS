@@ -6,7 +6,8 @@ import { persistenceMiddleware } from "../src/persistenceMiddleware.js";
 import { roles } from "../src/permissions.js";
 import {
   sendQuotationPdfEmail,
-  confirmQuotationReceipt
+  confirmQuotationReceipt,
+  resolveQuotationSend
 } from "../src/services/quotationEmailService.js";
 import {
   recordCommunicationEvidence,
@@ -104,6 +105,50 @@ describe("Quotation email evidence is truthful (provider acceptance is not deliv
     store = makeStore();
   });
   afterEach(() => { process.env = { ...originalEnv }; });
+
+  it("records Admin recovery against the original attempt and never resends a confirmed receipt", async () => {
+    await assert.rejects(send(db, store, failingTransport(uncertainFailure())));
+    const attempt = rows(db)[0];
+    const input = { quoteId: "q_1", evidenceId: attempt.id, outcome: "receipt_confirmed",
+      note: "Recipient confirmed the PDF by phone.", store, db };
+    assert.throws(() => resolveQuotationSend({ ...input, actor: SALES }), { status: 403 });
+    assert.throws(() => resolveQuotationSend({ ...input, actor: ADMIN, outcome: "unknown" }), { status: 400 });
+    resolveQuotationSend({ ...input, actor: ADMIN });
+    assert.equal(attempt.status, "send_uncertain");
+    assert.equal(attempt.recovery.recorded_by, ADMIN.id);
+    assert.ok(actions(store).includes("QUOTE_EMAIL_RECOVERY_RECORDED"));
+    const timeline = { entityType: "quote", entityId: "q_1", db };
+    assert.equal(getEntityCommunicationTimeline(timeline)[0].recovery, undefined);
+    const adminRow = getEntityCommunicationTimeline({ ...timeline, includeRecovery: true })[0];
+    assert.equal(adminRow.evidence_status, "send_uncertain");
+    assert.equal(adminRow.recovery.outcome, "receipt_confirmed");
+    assert.throws(() => resolveQuotationSend({ ...input, actor: ADMIN }), { status: 409 });
+    const transport = acceptingTransport();
+    await assert.rejects(send(db, store, transport), { code: "MAIL_RECOVERY_RECEIPT_CONFIRMED" });
+    assert.equal(transport.calls.length, 0);
+  });
+
+  it("holds fresh reservations and allows one linked Admin resend after verified non-acceptance", async () => {
+    await assert.rejects(send(db, store, acceptingTransport(), {
+      checkpointWrite: async () => { throw new Error("fixture interrupted before transport"); }
+    }));
+    const attempt = rows(db)[0];
+    const input = { quoteId: "q_1", evidenceId: attempt.id, outcome: "provider_not_accepted",
+      note: "Provider logs confirm rejection before acceptance.", actor: ADMIN, store, db };
+    assert.throws(() => resolveQuotationSend(input), { code: "SEND_IN_PROGRESS" });
+    attempt.recorded_at = new Date(Date.now() - 120_000).toISOString();
+    resolveQuotationSend(input);
+    const transport = acceptingTransport();
+    const resend = { resendOf: attempt.id, resendReason: input.note, idempotencyKey: "recovery-fixture",
+      checkpointWrite: async () => db };
+    await assert.rejects(send(db, store, transport, resend), { status: 403 });
+    const first = await send(db, store, transport, { ...resend, actor: ADMIN });
+    const duplicate = await send(db, store, transport, { ...resend, actor: ADMIN });
+    assert.equal(first.status, "accepted");
+    assert.equal(duplicate.replayed, true);
+    assert.equal(transport.calls.length, 1);
+    assert.equal(rows(db)[1].supersedes, attempt.id);
+  });
 
   it("commits a reservation before sending and preserves it when saving acceptance fails", async () => {
     let saved = makeDb();

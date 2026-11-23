@@ -13,7 +13,7 @@ import {
   listQueueMessages, getCommunicationQueueStats, createQueueMessage,
   dispatchQueueMessage, cancelQueueMessage, retryQueueMessage
 } from "../../controllers/communicationsController.js";
-import { sendQuotationPdfEmail, confirmQuotationReceipt } from "../../services/quotationEmailService.js";
+import { sendQuotationPdfEmail, confirmQuotationReceipt, resolveQuotationSend } from "../../services/quotationEmailService.js";
 
 const communicationsRouter = Router();
 
@@ -125,8 +125,22 @@ export function confirmQuotationReceiptHandler(req, res) {
   }
 }
 
+export function resolveQuotationSendHandler(req, res) {
+  try {
+    const { quote_id, evidence_id, outcome, note } = req.body || {};
+    const result = resolveQuotationSend({
+      quoteId: quote_id, evidenceId: evidence_id, outcome, note,
+      actor: getActor(req), store: req.store, db: req.db
+    });
+    return res.json({ success: true, data: result });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
 communicationsRouter.post("/communications/send-quotation-pdf", guardCommunication, sendQuotationPdfHandler);
 communicationsRouter.post("/communications/quotation-pdf-receipt", guardCommunication, confirmQuotationReceiptHandler);
+communicationsRouter.post("/communications/quotation-pdf-recovery", guardCommunication, resolveQuotationSendHandler);
 communicationsRouter.get("/communications/digest", (req, res, next) => {
   if (req.user?.role !== roles.ADMIN) return res.status(403).json({ success: false, message: "Admin access required." });
   next();

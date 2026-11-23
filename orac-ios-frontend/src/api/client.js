@@ -1147,6 +1147,7 @@ export const communications = {
   recordEvidence(payload) { return request("/communications/evidence", { method: "POST", body: JSON.stringify(payload) }); },
   recordExternalSend(payload) { return request("/communications/record-external-send", { method: "POST", body: JSON.stringify(payload) }); },
   sendQuotationPdf(payload) { return request("/communications/send-quotation-pdf", { method: "POST", body: JSON.stringify(payload) }); },
+  resolveQuotationSend(payload) { return request("/communications/quotation-pdf-recovery", { method: "POST", body: JSON.stringify(payload) }); },
   getDigest(params = {}) {
     const q = new URLSearchParams(params).toString();
     return request(`/communications/digest${q ? `?${q}` : ""}`);

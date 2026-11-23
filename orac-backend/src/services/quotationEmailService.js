@@ -230,6 +230,39 @@ function sendEvidence(db, quoteId) {
   );
 }
 
+// The transport has a 15-second deadline. A fresh reservation also needs
+// time to finish its checkpoint and acquire the next transaction.
+const RECOVERY_GRACE_MS = 60_000;
+
+export function resolveQuotationSend({ quoteId, evidenceId, outcome, note, actor, store, db }) {
+  if (!actor?.id || actor.role !== roles.ADMIN || actor.is_active === false) {
+    throw httpError(403, "MAIL_RECOVERY_ADMIN_REQUIRED", "An active administrator is required.");
+  }
+  const description = typeof note === "string" ? note.trim() : "";
+  if (!["receipt_confirmed", "provider_not_accepted"].includes(outcome) ||
+      description.length < 10 || description.length > 500) {
+    throw httpError(400, "MAIL_RECOVERY_EVIDENCE_REQUIRED", "Choose a verified outcome and describe the evidence in 10–500 characters.");
+  }
+  const attempts = sendEvidence(db, quoteId);
+  const attempt = attempts.find(e => e.id === evidenceId && e.transport_mode === "live-smtp");
+  if (!attempt) throw httpError(404, "SEND_EVIDENCE_NOT_FOUND", "No matching send evidence for this quote.");
+  if (!UNRESOLVED_STATES.has(attempt.status) || attempt.recovery || attempts.some(e => e.supersedes === attempt.id)) {
+    throw httpError(409, "MAIL_RECOVERY_NOT_OPEN", "This attempt is no longer open for recovery.");
+  }
+  const reservedAt = Date.parse(attempt.recorded_at);
+  if (inFlightAttempts.has(attempt.id) || (attempt.status === "send_attempted" &&
+      (!Number.isFinite(reservedAt) || Date.now() - reservedAt < RECOVERY_GRACE_MS))) {
+    throw httpError(409, "SEND_IN_PROGRESS", "Wait at least one minute after the original attempt and refresh before resolving it.");
+  }
+  const recovery = {
+    outcome, note: sanitizeAuditText(description), recorded_by: actor.id, recorded_at: new Date().toISOString()
+  };
+  store.audit(db, actor, "communication_evidence", attempt.id, "QUOTE_EMAIL_RECOVERY_RECORDED",
+    null, { quote_id: quoteId, outcome });
+  attempt.recovery = recovery;
+  return { evidenceId: attempt.id, recovery };
+}
+
 /**
  * Dispatches a quotation email with the controlled PDF attached.
  *
@@ -333,10 +366,19 @@ export async function sendQuotationPdfEmail({
       if (inFlightAttempts.has(target.id)) {
         throw httpError(409, "SEND_IN_PROGRESS", "That send is still in progress; wait for its outcome before re-sending.", { evidenceId: target.id, status: target.status });
       }
-      if (target.status === "send_attempted") {
+      if (target.recovery?.outcome === "receipt_confirmed") {
+        throw httpError(409, "MAIL_RECOVERY_RECEIPT_CONFIRMED", "Receipt was confirmed. This attempt cannot be resent.");
+      }
+      if (checkpointWrite && (target.recovery?.outcome !== "provider_not_accepted" || actor.role !== roles.ADMIN)) {
+        throw httpError(403, "MAIL_RECOVERY_ADMIN_REQUIRED", "An administrator must record verified non-acceptance before resending.");
+      }
+      if (target.status === "send_attempted" && target.recovery?.outcome !== "provider_not_accepted") {
         throw httpError(409, "SEND_RESERVATION_REQUIRES_REVIEW",
           "This send may still be in progress or may have been interrupted. An administrator must reconcile it before any resend.",
           { evidenceId: target.id, status: target.status });
+      }
+      if (unresolved.some(e => e.id !== target.id)) {
+        throw httpError(409, "SEND_OUTCOME_UNRESOLVED", "Resolve the other open attempts for this recipient before resending.");
       }
       if (typeof resendReason !== "string" || resendReason.trim().length < 10) {
         throw httpError(400, "RESEND_REASON_REQUIRED", "resend_reason (at least 10 characters) is required to re-send after an uncertain attempt");
@@ -344,6 +386,9 @@ export async function sendQuotationPdfEmail({
       supersedes = target.id;
     } else if (unresolved.length > 0) {
       const blocker = unresolved[0];
+      if (blocker.recovery?.outcome === "receipt_confirmed") {
+        throw httpError(409, "MAIL_RECOVERY_RECEIPT_CONFIRMED", "Receipt was confirmed. No new email was sent.");
+      }
       const inProgress = inFlightAttempts.has(blocker.id);
       throw httpError(409, inProgress ? "SEND_IN_PROGRESS" : "SEND_OUTCOME_UNRESOLVED",
         inProgress
@@ -389,7 +434,9 @@ export async function sendQuotationPdfEmail({
     try {
       db = await checkpointWrite();
       const savedRow = sendEvidence(db, quote.id).find((entry) => entry.id === row.id);
-      if (savedRow?.status !== "send_attempted") throw new Error("Saved reservation was not found.");
+      if (savedRow?.status !== "send_attempted" || savedRow.recovery) {
+        throw new Error("Saved reservation is unavailable.");
+      }
       row = savedRow;
     } catch {
       throw httpError(503, "SEND_RESERVATION_UNAVAILABLE", "The reservation could not be verified. Nothing was sent by this request.");

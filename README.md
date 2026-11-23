@@ -1,11 +1,19 @@
 # ORAC-IOS — Industrial Operations System
 
 > **Enterprise Operations ERP for Heavy Mining Plant Maintenance & Contracting Operations in Zimbabwe.**  
-> Built for heavy engineering contractors serving major mining houses (Zimplats, Unki, Mimosa). Single source of operational truth replacing fragmented paperwork and Sage Pastel with a role-based, USD-only platform.
+> Built for heavy engineering contractors serving major mining houses (Zimplats, Unki, Mimosa). A role-based, USD-only platform for operational records. Sage Pastel exports are for review and reconciliation.
 
 ---
 
-## Live Deployed Architecture & Endpoints
+## Current candidate and handoff
+
+Local baseline `ad0f985` on `batch-7-production-reconciliation-handover`, verified 23 November 2026. The quotation send-reservation fix passed 89 focused tests and three isolated PostgreSQL checks using simulated email. The Admin queue cannot dispatch live mail. Controlled inbox receipt and company acceptance remain open.
+
+The current working tree adds **Quotation email recovery** to Admin's Quotations page. Admins can record confirmed receipt or verified provider non-acceptance against the original attempt. Unknown outcomes stay blocked. The replacement uses the current quotation PDF and the original recipient. Four isolated PostgreSQL checks passed with simulated email, including reconnect and concurrent resend protection. The live inbox pilot remains a release gate. After recording the recovery patch in Git, verify the Procurement & Stores portal journey, including goods receipt and server-side refusal. Repeat for Fleet & Facilities, HSE & Quality and Human Resources. Test Public Prospect on the separate public website.
+
+Record the commit, checkout status, test environment and evidence when handing work to another agent. Recheck current Git and provider build identities before relying on a dated handover or the service inventory below.
+
+## Deployment targets and documented endpoints
 
 | Tier | Platform | Service / Target | Live Deployed URL |
 | :--- | :--- | :--- | :--- |
@@ -13,8 +21,8 @@
 | **Frontend Portal** | **Render** | `orac-industrial-service-portal` (Static SPA) | [`https://orac-industrial-service-portal.onrender.com`](https://orac-industrial-service-portal.onrender.com) |
 | **Public Website** | **Vercel** | Marketing & Client Ingress Demo (*Separate Repo*) | [`https://orac-system-web.vercel.app`](https://orac-system-web.vercel.app) |
 
-* **Ingress Connection:** The public website on Vercel submits client inquiries and service bookings directly to `POST https://orac-operations-api.fly.dev/api/leads`.
-* **Portal Connection:** The React portal on Render connects to `https://orac-operations-api.fly.dev/api` via `VITE_API_BASE_URL`.
+* **Public website:** Verify its deployed enquiry and booking routes separately against the connected public-site repository.
+* **Portal:** The documented `VITE_API_BASE_URL` is `https://orac-operations-api.fly.dev/api`. Verify the value in the deployed browser build.
 
 ---
 

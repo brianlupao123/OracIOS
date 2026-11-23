@@ -4,6 +4,7 @@ import PageHeaderBanner from "../components/PageHeaderBanner.jsx";
 import Modal from "../components/Modal.jsx";
 import RecordAnalysisModal from "../components/RecordAnalysisModal.jsx";
 import EmailPreviewModal from "../components/EmailPreviewModal.jsx";
+import QuotationEmailRecovery from "../components/QuotationEmailRecovery.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { ICONS } from "../components/icons.jsx";
 import { ErrorBanner, PageEmptyState, PageLoadingSkeleton } from "../components/PageStates.jsx";
@@ -531,6 +532,7 @@ export default function QuotationsPage({ user }) {
                     </div>
                   </div>
                   <QuoteEvidenceSummary quote={quote} clientName={clientName} />
+                  {user.role === "Admin" && <QuotationEmailRecovery quote={quote} />}
 
                   {(actions.canEdit || actions.canSend || actions.canCancel || showApprove || showDispatch) && (
                     <div className="mt-4 flex flex-wrap gap-2 border-t border-orac-border-default pt-4">
