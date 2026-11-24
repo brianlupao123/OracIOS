@@ -6,11 +6,12 @@
  */
 import { Router } from "express";
 import { validate } from "../middleware/validate.js";
-import { IssueAttendanceBadgeSchema, WithdrawAttendanceBadgeSchema, SetAttendancePinSchema, ClearAttendancePinSchema } from "./schemas.js";
+import { IssueAttendanceBadgeSchema, WithdrawAttendanceBadgeSchema, SetAttendancePinSchema, ClearAttendancePinSchema, ClockActionSchema } from "./schemas.js";
 import {
   getAttendanceStatus, issueAttendanceBadge, listAttendanceBadges, withdrawAttendanceBadge,
   getOwnPinStatus, setOwnAttendancePin, clearAttendancePin
 } from "./credentialController.js";
+import { clockIn, clockOut } from "./clockController.js";
 
 const attendanceRouter = Router();
 
@@ -21,5 +22,7 @@ attendanceRouter.post("/attendance/badges/:id/withdraw", validate(WithdrawAttend
 attendanceRouter.get("/attendance/pin/status", getOwnPinStatus);
 attendanceRouter.post("/attendance/pin", validate(SetAttendancePinSchema), setOwnAttendancePin);
 attendanceRouter.post("/attendance/technicians/:id/pin/clear", validate(ClearAttendancePinSchema), clearAttendancePin);
+attendanceRouter.post("/attendance/clock-in", validate(ClockActionSchema), clockIn);
+attendanceRouter.post("/attendance/clock-out", validate(ClockActionSchema), clockOut);
 
 export default attendanceRouter;

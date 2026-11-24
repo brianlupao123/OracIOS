@@ -196,7 +196,9 @@ const NEW_PERMISSIONS = {
   viewAttendanceStatus: [A, O, V, T],
   manageAttendanceBadges: [A, O],
   clearAttendancePin: [A, O],
-  setOwnAttendancePin: [T]
+  setOwnAttendancePin: [T],
+  // Clock in/out with a badge + PIN: a Technician on their own session, or a Supervisor presenting a badge at a shared device. OWNER DECISION.
+  clockAttendance: [T, V]
 };
 const OVERLAYS = [
   { flag: "TIMESHEET_SALES_ACCESS",

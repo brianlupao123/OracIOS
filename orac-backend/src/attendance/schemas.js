@@ -17,3 +17,12 @@ export const SetAttendancePinSchema = z.object({
 });
 
 export const ClearAttendancePinSchema = z.object({ reason });
+
+// Clock action body. No time, sequence, hash, channel, hours or location field exists: zod strips anything extra.
+// The PIN is format-checked in the handler (never echoed). client_event_id is the retry-safe UUID v4 the event store uses.
+export const ClockActionSchema = z.object({
+  badge_token: z.string().min(1, "Badge is required").max(128, "Badge not accepted"),
+  pin: z.string().max(32, "Invalid PIN"),
+  client_event_id: z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i, "client_event_id must be a UUID version 4"),
+  dispatch_card_id: z.string().trim().min(1).max(100).optional()
+});
