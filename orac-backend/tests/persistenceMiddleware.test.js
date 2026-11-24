@@ -72,3 +72,36 @@ test("a rejected mutation releases its transaction without writing", async () =>
   assert.equal(calls.release, 1);
   assert.equal(calls.write, 0);
 });
+
+test("the payroll Pastel review export persists its audit row", async () => {
+  const calls = { read: [], release: 0, writes: [] };
+  const context = {};
+  const store = {
+    read: async (options) => {
+      calls.read.push(options);
+      return { db: { audit: [] }, release: context };
+    },
+    release: async (value) => {
+      assert.strictEqual(value, context);
+      calls.release += 1;
+    },
+    write: async (db) => {
+      calls.writes.push([...db.audit]);
+    }
+  };
+  const app = express();
+  app.use(persistenceMiddleware(store));
+  app.get("/exports/pastel-payroll.csv", (req, res) => {
+    req.db.audit.push({ event: "PASTEL_PAYROLL_EXPORT_GENERATED" });
+    res.type("text/csv").send("employee_code,hours\nEMP-001,8\n");
+  });
+
+  await withServer(app, async (url) => {
+    const response = await fetch(`${url}/exports/pastel-payroll.csv`);
+    assert.equal(response.status, 200);
+  });
+
+  assert.deepEqual(calls.read, [{ lock: true }]);
+  assert.equal(calls.release, 0);
+  assert.deepEqual(calls.writes, [[{ event: "PASTEL_PAYROLL_EXPORT_GENERATED" }]]);
+});

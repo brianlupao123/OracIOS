@@ -3,6 +3,7 @@
 const AUDITED_READS = [
   /^\/document-data\/daily_timesheets\/[^/]+$/,
   /^\/daily-timesheet-review-queue$/,
+  /^\/exports\/pastel-payroll\.csv$/,
   /^\/exports\/pastel(?:\.csv|-review\/.*)?$/
 ];
 const isAuditedRead = (req) => req.method === "GET" && AUDITED_READS.some((re) => re.test(req.path));
