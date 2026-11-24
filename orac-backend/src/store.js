@@ -282,7 +282,7 @@ export const SCHEMA_COLLECTIONS = [
   "jsa_records", "client_prs",
   "virtual_technical_surveys", "client_job_feedbacks", "qr_optical_tokens",
   "iot_sensor_telemetries", "iot_threshold_alerts", "offline_sync_journal",
-  "attendance_badges", "attendance_pin_credentials"
+  "attendance_badges", "attendance_pin_credentials", "attendance_events"
 ];
 
 export function normalizeDb(db, { seedDemoRecords = process.env.NODE_ENV !== "production" } = {}) {

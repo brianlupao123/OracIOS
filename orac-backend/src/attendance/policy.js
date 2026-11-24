@@ -8,5 +8,6 @@ export const ATTENDANCE_POLICY = Object.freeze({
   pin_lock_minutes: 15,         // PROVISIONAL: how long that technician's PIN entry stays locked
   badge_default_valid_days: 180, // PROVISIONAL: badge life when the issuer does not choose one
   badge_max_valid_days: 365,    // PROVISIONAL: longest badge life an issuer may choose
-  site_utc_offset_minutes: 120  // PROVISIONAL: Harare (CAT, no daylight saving); used only to label a shift's work date
+  site_utc_offset_minutes: 120, // PROVISIONAL: Harare (CAT, no daylight saving); used only to label an event's site date
+  max_open_shift_hours: 16      // PROVISIONAL: an open session older than this is flagged for review; it is NEVER closed automatically
 });
