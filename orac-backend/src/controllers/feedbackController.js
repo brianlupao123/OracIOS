@@ -16,8 +16,12 @@ import {
 } from "../services/qbrReportService.js";
 
 import {
-  generateQrBundle
+  generateQrBundle,
+  resolvePublicFeedbackUrl,
+  renderPublicFeedbackQr
 } from "../services/qrCodeService.js";
+
+import { PUBLIC_FEEDBACK_SOURCE, isPublicFeedback } from "../services/publicFeedbackPolicy.js";
 
 function resolveActor(req) {
   if (!req.user?.id) return null;
@@ -114,10 +118,15 @@ export const listFeedbacks = (req, res) => {
     req.db.client_job_feedbacks = req.db.client_job_feedbacks || [];
     let list = [...req.db.client_job_feedbacks];
 
-    if (actor.role === "Client Viewer" && actor.client_id) {
-      list = list.filter((f) => f.client_id === actor.client_id);
-    } else if (req.query.client_id) {
-      list = list.filter((f) => f.client_id === req.query.client_id);
+    if (actor.role === "Client Viewer") {
+      // A client sees only its own client's rows. A Client Viewer with no client_id sees
+      // nothing (it was previously unscoped), and anonymous public rows never match.
+      list = actor.client_id
+        ? list.filter((f) => f.client_id === actor.client_id && !isPublicFeedback(f))
+        : [];
+    } else {
+      if (req.query.client_id) list = list.filter((f) => f.client_id === req.query.client_id);
+      if (req.query.source === PUBLIC_FEEDBACK_SOURCE) list = list.filter(isPublicFeedback);
     }
 
     if (req.query.triage_only === "true") {
@@ -221,6 +230,22 @@ export const generateQrToken = (req, res) => {
         token_id: record.id
       }
     });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ success: false, message: err.message });
+  }
+};
+
+// Staff only: QR plus an identical text link for the configured public feedback page.
+export const getPublicFeedbackQr = async (req, res) => {
+  try {
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Sales"]);
+    const url = resolvePublicFeedbackUrl();
+    if (!url) {
+      return res.status(503).json({ success: false, message: "The public feedback URL is not configured." });
+    }
+    const qr = await renderPublicFeedbackQr(url);
+    return res.json({ success: true, data: { url, text_link: url, ...qr } });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ success: false, message: err.message });
   }

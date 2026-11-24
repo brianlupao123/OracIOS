@@ -3,6 +3,8 @@
 // Executive QBR Reporting & Net Promoter Score (NPS) Evaluation Engine.
 // Harvested from 1-Feedback-System evaluation and reporting models.
 
+import { isPublicFeedback } from "./publicFeedbackPolicy.js";
+
 /**
  * Calculates Net Promoter Score (NPS) and satisfaction rating aggregates.
  * 
@@ -10,7 +12,10 @@
  * @returns {object} NPS metrics breakdown
  */
 export function calculateNps(feedbackList = []) {
-  if (!feedbackList || feedbackList.length === 0) {
+  // Anonymous public (QR) feedback has no NPS question and no verified client, and a missing
+  // nps_score would otherwise count as a 0 (detractor). It is excluded from every aggregate here.
+  feedbackList = (feedbackList || []).filter((item) => !isPublicFeedback(item));
+  if (feedbackList.length === 0) {
     return {
       total_reviews: 0,
       average_rating_stars: 0,

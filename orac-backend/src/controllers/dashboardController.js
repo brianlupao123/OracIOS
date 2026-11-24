@@ -43,7 +43,12 @@ export const getRoleDashboardSummary = (req, res) => {
 
     // Client filtering for Client Viewer
     const isClient = role === "Client Viewer" && clientId;
-    const scopedFeedbacks = isClient ? feedbacks.filter((f) => f.client_id === clientId) : feedbacks;
+    // Anonymous public feedback is an ORAC staff-triage record, never client-visible.
+    // Client scoping still applies to ordinary feedback, even if a future bad write
+    // accidentally supplies a client_id on a public row.
+    const scopedFeedbacks = isClient
+      ? feedbacks.filter((f) => f.client_id === clientId && f.source !== "PUBLIC_QR")
+      : feedbacks;
     const scopedSurveys = isClient ? surveys.filter((s) => s.client_id === clientId) : surveys;
     const scopedDispatches = isClient ? dispatches.filter((d) => d.client_id === clientId) : dispatches;
 

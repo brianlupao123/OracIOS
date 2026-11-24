@@ -107,3 +107,43 @@ export function generateQrBundle(tokenType, targetId, metadata = {}) {
     data_url: dataUrl
   };
 }
+
+// ── Public feedback QR ─────────────────────────────────────────────────────
+// renderQrSvg() above is a deterministic decorative grid, NOT a scannable QR Code (it is
+// kept unchanged for the signed internal tokens). The public feedback QR uses the vetted
+// `qrcode` package instead. It is imported lazily so the rest of the API (and its tests)
+// do not depend on it being installed.
+
+/**
+ * Reads the public feedback page URL from ORAC_PUBLIC_FEEDBACK_URL. Returns the normalised
+ * URL string, or null when it is unset or unsafe (not https, embedded credentials, longer
+ * than 200 characters). There is deliberately NO fallback or default address.
+ */
+export function resolvePublicFeedbackUrl(env = process.env) {
+  const raw = String(env.ORAC_PUBLIC_FEEDBACK_URL || "").trim();
+  if (!raw) return null;
+  let url;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.protocol !== "https:" || url.username || url.password || !url.hostname) return null;
+  const text = url.toString();
+  return text.length <= 200 ? text : null;
+}
+
+async function defaultQrGenerator(text) {
+  let mod;
+  try {
+    mod = await import("qrcode");
+  } catch {
+    throw Object.assign(new Error("The QR generator dependency is not installed."), { statusCode: 503 });
+  }
+  return (mod.default || mod).toString(text, { type: "svg", errorCorrectionLevel: "M", margin: 4 });
+}
+
+/** SVG QR whose payload is exactly `url`. `generator` is injectable for tests. */
+export async function renderPublicFeedbackQr(url, { generator = defaultQrGenerator } = {}) {
+  const svg = await generator(url);
+  if (typeof svg !== "string" || !/^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/.test(svg)) {
+    throw Object.assign(new Error("The QR generator returned an unexpected result."), { statusCode: 502 });
+  }
+  return { svg, data_url: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}` };
+}
