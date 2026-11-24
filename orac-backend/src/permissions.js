@@ -191,7 +191,12 @@ const NEW_PERMISSIONS = {
   attachPoScopeEvidence: [A, S],
   resolvePostInvoiceRevision: [A, F],
   viewPaperSampling: [A, F],
-  runTimesheetReminders: [A, S]
+  runTimesheetReminders: [A, S],
+  // Technician attendance (QR badge + six-digit PIN). Dark behind ORAC_ATTENDANCE_ENABLED; evidence only.
+  viewAttendanceStatus: [A, O, V, T],
+  manageAttendanceBadges: [A, O],
+  clearAttendancePin: [A, O],
+  setOwnAttendancePin: [T]
 };
 const OVERLAYS = [
   { flag: "TIMESHEET_SALES_ACCESS",

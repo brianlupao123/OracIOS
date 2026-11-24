@@ -281,7 +281,8 @@ export const SCHEMA_COLLECTIONS = [
   "leave_requests", "maintenance_requests", "odometer_readings", "quality_inspections",
   "jsa_records", "client_prs",
   "virtual_technical_surveys", "client_job_feedbacks", "qr_optical_tokens",
-  "iot_sensor_telemetries", "iot_threshold_alerts", "offline_sync_journal"
+  "iot_sensor_telemetries", "iot_threshold_alerts", "offline_sync_journal",
+  "attendance_badges", "attendance_pin_credentials"
 ];
 
 export function normalizeDb(db, { seedDemoRecords = process.env.NODE_ENV !== "production" } = {}) {

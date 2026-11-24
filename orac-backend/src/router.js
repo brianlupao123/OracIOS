@@ -38,6 +38,7 @@ import communicationsRoutes from "./modules/communications/routes.js";
 import serviceRequestsRoutes from "./modules/service-requests/routes.js";
 import uploadsRoutes from "./modules/uploads/routes.js";
 import ganttRoutes from "./modules/operations/ganttRoutes.js";
+import attendanceRoutes from "./attendance/routes.js";
 
 const router = express.Router();
 
@@ -85,5 +86,6 @@ router.use(communicationsRoutes);
 router.use(serviceRequestsRoutes);
 router.use(uploadsRoutes);
 router.use(ganttRoutes);
+router.use(attendanceRoutes);
 
 export default router;

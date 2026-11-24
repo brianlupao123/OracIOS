@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateTotpRuntime } from "./totpPolicy.js";
 import { getBusinessTimezone } from "./businessTimezone.js";
+import { validateAttendanceRuntime } from "./attendance/secret.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, "..");
