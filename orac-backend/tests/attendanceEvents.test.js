@@ -60,7 +60,7 @@ test("append validation: types, channels, ids and time are checked and nothing i
   const db = emptyDb();
   assert.deepEqual(EVENT_TYPES, ["clock_in", "clock_out"]); assert.deepEqual(CAPTURE_CHANNELS, ["self_phone", "shared_kiosk"]);
   for (const bad of [{ event_type: "break_start" }, { event_type: undefined }, { capture_channel: "gps" }, { technician_id: "" }, { badge_id: undefined },
-    { recorded_by_user_id: 5 }, { client_event_id: "not-a-uuid" }, { client_event_id: randomUUID().replace("-4", "-1") }, { client_event_id: undefined }]) {
+    { recorded_by_user_id: 5 }, { client_event_id: "not-a-uuid" }, { client_event_id: "00000000-0000-1000-8000-000000000000" }, { client_event_id: undefined }]) {
     assert.throws(() => appendEvent(db, make(bad), { nowMs: T0 }), (e) => e.status === 400 && e.code === "ATTENDANCE_BAD_EVENT", JSON.stringify(bad));
   }
   assert.throws(() => appendEvent(db, make(), { nowMs: NaN }), (e) => e.status === 500);

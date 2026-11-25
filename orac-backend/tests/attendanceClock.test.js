@@ -229,7 +229,7 @@ test("withdrawn badge, inactive technician and no PIN are refused; nothing recor
 test("request schema: strips unknown fields, requires UUID v4 + badge + pin, accepts upper-case ids", () => {
   const ok = ClockActionSchema.parse({ badge_token: "ORAC-B1.x", pin: "1", client_event_id: randomUUID().toUpperCase(), server_time: "x", hours: 8, capture_channel: "shared_kiosk", latitude: 1 });
   assert.deepEqual(Object.keys(ok).sort(), ["badge_token", "client_event_id", "pin"]);
-  for (const bad of [{}, { badge_token: "a", pin: "1" }, { badge_token: "a", pin: "1", client_event_id: "nope" }, { badge_token: "a", pin: "1", client_event_id: randomUUID().replace("-4", "-1") },
+  for (const bad of [{}, { badge_token: "a", pin: "1" }, { badge_token: "a", pin: "1", client_event_id: "nope" }, { badge_token: "a", pin: "1", client_event_id: "00000000-0000-1000-8000-000000000000" },
     { badge_token: "", pin: "1", client_event_id: randomUUID() }, { badge_token: "a", pin: "1".repeat(33), client_event_id: randomUUID() }, { badge_token: "a", pin: 1, client_event_id: randomUUID() }]) {
     assert.throws(() => ClockActionSchema.parse(bad), JSON.stringify(bad));
   }
