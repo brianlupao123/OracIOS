@@ -276,7 +276,7 @@ test("attendance permissions: defined, flag-independent in the table, minimal ro
   assert.equal(hasPermission({ is_active: true, role: roles.ADMIN }, "setOwnAttendancePin"), false, "nobody but a Technician may set a PIN");
   assert.equal(hasPermission({ is_active: true, role: roles.TECHNICIAN }, "manageAttendanceBadges"), false);
   assert.equal(hasPermission({ is_active: false, role: roles.ADMIN }, "manageAttendanceBadges"), false);
-  for (const role of [roles.CLIENT_VIEWER, roles.SALES, roles.FINANCE, roles.MANAGEMENT, roles.PUBLIC_PROSPECT, roles.HR]) {
+  for (const role of [roles.CLIENT_VIEWER, roles.SALES, roles.FINANCE, roles.MANAGEMENT, roles.HR]) {
     for (const key of Object.keys(expected)) assert.equal(hasPermission({ is_active: true, role }, key), false, `${role} ${key}`);
   }
 });

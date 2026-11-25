@@ -12,7 +12,6 @@ export const roles = {
   FLEET: "Fleet & Facilities",
   HSE: "HSE & Quality",
   HR: "Human Resources",
-  PUBLIC_PROSPECT: "Public Prospect"
 };
 
 export const permissions = {
@@ -145,10 +144,6 @@ export const permissions = {
   manageMineSiteInductions: [roles.ADMIN, roles.HR, roles.HSE],
   viewHrDashboard: [roles.ADMIN, roles.MANAGEMENT, roles.HR],
   manageArtisanDispatchAllocations: [roles.ADMIN, roles.HR, roles.OPERATIONS],
-  // ── Public Prospect ──
-  submitPublicEnquiry: [roles.PUBLIC_PROSPECT],
-  viewPublicCatalog: [roles.PUBLIC_PROSPECT],
-  viewOwnEnquiryStatus: [roles.PUBLIC_PROSPECT],
   // ── Booking & Schedule (public website integration) ──
   manageBookings: [roles.ADMIN, roles.MANAGEMENT, roles.SALES],
   manageBookingSettings: [roles.ADMIN, roles.MANAGEMENT, roles.OPERATIONS]

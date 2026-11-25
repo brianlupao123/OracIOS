@@ -66,7 +66,7 @@ test("dark by default: flag off answers 409 FEATURE_DISABLED to a permitted role
 test("permission: clockAttendance is Technician + Supervisor only, lives in the dark table, no unauthenticated access", async () => {
   assert.deepEqual(effectivePermissionRoles("clockAttendance"), [roles.TECHNICIAN, roles.SUPERVISOR]);
   assert.equal("clockAttendance" in permissions, false);
-  for (const role of [roles.ADMIN, roles.OPERATIONS, roles.MANAGEMENT, roles.SALES, roles.FINANCE, roles.CLIENT_VIEWER, roles.HR, roles.HSE, roles.PUBLIC_PROSPECT]) {
+  for (const role of [roles.ADMIN, roles.OPERATIONS, roles.MANAGEMENT, roles.SALES, roles.FINANCE, roles.CLIENT_VIEWER, roles.HR, roles.HSE]) {
     assert.equal(hasPermission({ is_active: true, role }, "clockAttendance"), false, role);
   }
   assert.equal(hasPermission({ is_active: false, role: roles.TECHNICIAN }, "clockAttendance"), false);

@@ -68,7 +68,6 @@ function seedData() {
     { id: "u_fleet", name: "Fleet User", email: "fleet@orac.co.zw", role: "Fleet & Facilities", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
     { id: "u_hse", name: "HSE User", email: "hse@orac.co.zw", role: "HSE & Quality", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
     { id: "u_hr", name: "HR User", email: "hr@orac.co.zw", role: "Human Resources", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH },
-    { id: "u_prospect", name: "Public Prospect", email: "prospect@orac.co.zw", role: "Public Prospect", is_active: true, password_hash: DEFAULT_DEMO_PASSWORD_HASH }
   ];
 
   const clients = [
