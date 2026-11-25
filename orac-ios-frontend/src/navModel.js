@@ -27,7 +27,8 @@ export const TIMESHEET_STATUS_FILTERS = Object.freeze([
 // Pages that exist and are role-gated but were not reachable from the default menu.
 const EXTRA_ITEMS = Object.freeze([
   { groupId: "commercial", path: "/contracts", label: "Contracts" },
-  { groupId: "field-work", path: "/kiosk", label: "Kiosk mode" }
+  { groupId: "field-work", path: "/kiosk", label: "Kiosk mode" },
+  { groupId: "field-work", path: "/attendance", label: "Attendance" }
 ]);
 
 const PRESENTATION_ORDER = Object.freeze([
@@ -53,6 +54,7 @@ const PRESENTATION_ORDER = Object.freeze([
       "/worksheets",
       "/monthly-worksheets",
       "/kiosk",
+      "/attendance",
       ...(fleetHseEnabled() ? ["/fleet", "/hse"] : []),
       ...(artisanVaultEnabled() ? ["/artisans"] : []),
       ...(feedbackAndQrEnabled() ? ["/qr-tools"] : []),

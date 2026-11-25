@@ -85,6 +85,9 @@ export const ROUTE_ACCESS = Object.freeze({
   // (Admin and Management); the server enforces them on every call.
   "/imports": [ROLES.ADMIN, ROLES.MANAGEMENT],
   "/kiosk": F.kioskHidden ? [ROLES.ADMIN] : operationalRoles,
+  // Attendance clock actions (QR badge + PIN). Mirrors the backend clockAttendance permission (Technician, Supervisor).
+  // Display gate only: the server decides every request, and answers FEATURE_DISABLED while the attendance flag is off.
+  "/attendance": [ROLES.TECHNICIAN, ROLES.SUPERVISOR],
   // Mirrors the backend viewContracts policy. Supervisor is excluded because
   // contracts have no supervisor-assignment relation to scope against, and a
   // Client Viewer only ever receives its own client's records from the API.

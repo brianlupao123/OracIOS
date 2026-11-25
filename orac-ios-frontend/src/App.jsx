@@ -34,6 +34,7 @@ import QuotationsPage from "./pages/QuotationsPage.jsx";
 import FinanceCommercialPage from "./pages/FinanceCommercialPage.jsx";
 import InternalRequestsPage from "./pages/InternalRequestsPage.jsx";
 import KioskModePage from "./pages/KioskModePage.jsx";
+import AttendancePage from "./pages/AttendancePage.jsx";
 import ContractsPage from "./pages/ContractsPage.jsx";
 import PortalLayout from "./layouts/PortalLayout.jsx";
 import AccessDeniedPage from "./pages/AccessDeniedPage.jsx";
@@ -128,6 +129,7 @@ export default function App() {
         <Route path="/daily-timesheets" element={<GuardedRoute user={user} path="/daily-timesheets"><DailyTimesheetPage user={user} /></GuardedRoute>} />
         <Route path="/contractor-logs" element={<GuardedRoute user={user} path="/contractor-logs"><ContractorLogPage user={user} /></GuardedRoute>} />
         <Route path="/kiosk" element={<GuardedRoute user={user} path="/kiosk"><KioskModePage user={user} /></GuardedRoute>} />
+        <Route path="/attendance" element={<GuardedRoute user={user} path="/attendance"><AttendancePage user={user} /></GuardedRoute>} />
         <Route path="/contracts" element={<GuardedRoute user={user} path="/contracts"><ContractsPage user={user} /></GuardedRoute>} />
         <Route path="/inventory" element={<GuardedRoute user={user} path="/inventory"><InventoryPage user={user} /></GuardedRoute>} />
         {procurementEnabled() && (

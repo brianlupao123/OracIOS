@@ -548,6 +548,14 @@ export const kiosk = {
   }
 };
 
+// Attendance (QR badge + six-digit PIN). Contract: orac-backend/src/attendance/routes.js + schemas.js.
+// Clock bodies carry exactly { badge_token, pin, client_event_id }. They are never queued, cached or stored.
+export const attendance = {
+  status() { return request("/attendance/status"); },
+  clockIn(payload) { return request("/attendance/clock-in", { method: "POST", body: JSON.stringify(payload) }); },
+  clockOut(payload) { return request("/attendance/clock-out", { method: "POST", body: JSON.stringify(payload) }); }
+};
+
 export const notifications = {
   list() {
     return request("/notifications");

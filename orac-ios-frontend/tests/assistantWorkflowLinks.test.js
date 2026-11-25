@@ -14,7 +14,7 @@ const ALL_ROLES = Object.values(ROLES);
 // the shared route contract" (tests/aiWorkflowAssistant.test.js). The backend
 // assistant may only link to these paths for these roles. Change both together.
 // Routes that are not assistant destinations (the Guide does not link to them). Needs owner approval.
-const ASSISTANT_EXEMPT_ROUTES = ["/imports"];
+const ASSISTANT_EXEMPT_ROUTES = ["/imports", "/attendance"]; // /attendance: clock actions, not a Guide destination; owner approval needed to link it
 const ROUTE_CONTRACT = {
   "/": ALL_ROLES,
   "/portal": ["Client Viewer"],
