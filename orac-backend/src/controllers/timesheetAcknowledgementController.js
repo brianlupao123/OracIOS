@@ -5,6 +5,9 @@ import { companyFromProfile } from "./documentController.js";
 import { clientReturnEnabled, clientForWorksheet, eligibilityCutoverEnabled } from "../timesheetEligibility.js";
 import { swapRevisionIfEligible, flag, activeAuthorityFor, authoritySnapshot, anyActiveAuthority, CONFIRMATION_STATEMENT } from "../timesheetWorkflow.js";
 import { isKioskEntry, kioskReviewStatus, KIOSK_REVIEW_STATUS } from "../timesheetReview.js";
+import { activeGrantFor } from "../dispatchCardGrants.js";
+import { dispatchHasActiveInvoice, INVOICED_DISPATCH_MESSAGE } from "../dispatchFreeze.js";
+import { appendHistoryEntry, sanitizeHistoryForClient } from "../timesheetAcknowledgementHistory.js";
 
 // Plain-language status for printed packs. The JSON keeps the raw status (API
 // contract) and adds status_label. Client acknowledgement and internal
@@ -97,10 +100,49 @@ function resolveWorksheetSite(db, worksheet) {
   return { dispatch, quote, equipment, section, plant, mineSite };
 }
 
+// Batch C Commit 3 — online-only enforcement.
+function rejectOffline(req, res) {
+  if (req.body?._offline || req.body?._replayed || req.headers?.["x-offline-replay"]) {
+    res.status(400).json({
+      success: false,
+      code: "ONLINE_ONLY",
+      message: "Acknowledgement, return and batch confirmation require an online connection."
+    });
+    return true;
+  }
+  return false;
+}
+
+// Batch C Commit 3 — signer identity from authenticated account.
+function resolveSignerName(actor, bodySignerName) {
+  if (!actor || !actor.name || !actor.name.trim()) {
+    return { ok: false, code: "ACCOUNT_NAME_REQUIRED", message: "Your account must have a name set before you can acknowledge." };
+  }
+  if (bodySignerName && bodySignerName.trim() && bodySignerName.trim().toLowerCase() !== actor.name.trim().toLowerCase()) {
+    return { ok: false, code: "SIGNER_NAME_MISMATCH", message: "The signer name must match your account name." };
+  }
+  return { ok: true, name: actor.name };
+}
+
+// Batch C Commit 3 — dispatch-card grant gate for Client Viewer.
+function requireGrant(db, actor, worksheet, res) {
+  if (!isClientViewer(actor)) return { ok: true, grant: null };
+  const grant = activeGrantFor(db, actor.id, worksheet.dispatch_card_id);
+  if (!grant) {
+    res.status(403).json({ success: false, code: "NO_ACTIVE_GRANT", message: "No active dispatch-card grant for this worksheet's dispatch." });
+    return { ok: false };
+  }
+  if (grant.client_id !== actor.client_id) {
+    res.status(403).json({ success: false, message: "Grant does not match your client." });
+    return { ok: false };
+  }
+  return { ok: true, grant };
+}
+
 function worksheetSummary(db, worksheet) {
   const { dispatch, mineSite } = resolveWorksheetSite(db, worksheet);
   const technician = db.users.find((user) => user.id === worksheet.technician_id);
-  return {
+  const summary = {
     id: worksheet.id,
     dispatch_card_id: worksheet.dispatch_card_id,
     dispatch_number: dispatch?.dispatch_number || null,
@@ -121,6 +163,10 @@ function worksheetSummary(db, worksheet) {
     client_return: worksheet.client_return || null,
     return_history: (worksheet.return_history || []).map((h) => ({ ...h }))
   };
+  if (flag("BATCH_C")) {
+    summary.acknowledgement_history = (worksheet.acknowledgement_history || []).map(sanitizeHistoryForClient);
+  }
+  return summary;
 }
 
 // Client Viewer's own pending + historical timesheets for their client only.
@@ -129,9 +175,11 @@ export function listOwnClientTimesheets(req, res) {
   requirePermission(actor, "viewOwnClientTimesheets");
 
   const scoped = scopeByClient(req.db.field_worksheets, actor, (item) => resolveWorksheetClientId(req.db, item));
-  const data = scoped
-    .filter((worksheet) => !["Draft"].includes(worksheet.status))
-    .map((worksheet) => worksheetSummary(req.db, worksheet));
+  let filtered = scoped.filter((worksheet) => !["Draft"].includes(worksheet.status));
+  if (flag("BATCH_C") && isClientViewer(actor)) {
+    filtered = filtered.filter((worksheet) => activeGrantFor(req.db, actor.id, worksheet.dispatch_card_id));
+  }
+  const data = filtered.map((worksheet) => worksheetSummary(req.db, worksheet));
 
   res.json({ success: true, data });
 }
@@ -165,6 +213,26 @@ export function acknowledgeWorksheet(req, res) {
     return res.status(403).json({ success: false, message: "A client representative may acknowledge only their own client's entries." });
   }
 
+  // Batch C Commit 3 gates when flag is on
+  let activeGrant = null;
+  let signerName = req.body.signer_name;
+  if (flag("BATCH_C")) {
+    if (rejectOffline(req, res)) return;
+
+    const grantCheck = requireGrant(req.db, actor, worksheet, res);
+    if (!grantCheck.ok) return;
+    activeGrant = grantCheck.grant;
+
+    const dispatch = resolveDispatch(req.db, worksheet);
+    if (dispatch && dispatchHasActiveInvoice(req.db, dispatch)) {
+      return res.status(409).json({ success: false, code: "DISPATCH_FROZEN", message: INVOICED_DISPATCH_MESSAGE });
+    }
+
+    const signerCheck = resolveSignerName(actor, req.body.signer_name);
+    if (!signerCheck.ok) return res.status(400).json({ success: false, code: signerCheck.code, message: signerCheck.message });
+    signerName = signerCheck.name;
+  }
+
   if (worksheet.status !== "Submitted") {
     return res.status(400).json({
       success: false,
@@ -181,7 +249,7 @@ export function acknowledgeWorksheet(req, res) {
   worksheet.client_acknowledgement = {
     ...(authz.snapshot ? { authority_snapshot: authz.snapshot, confirmation_statement: CONFIRMATION_STATEMENT } : {}),
     id: req.store.id("wsack"),
-    signer_name: req.body.signer_name,
+    signer_name: signerName,
     signer_role: req.body.signer_role,
     acknowledged_by_user_id: actor.id,
     acknowledged_at: acknowledgedAt,
@@ -191,6 +259,24 @@ export function acknowledgeWorksheet(req, res) {
     evidence_reference: req.store.id("evd")
   };
   worksheet.updated_at = acknowledgedAt;
+
+  if (flag("BATCH_C")) {
+    appendHistoryEntry(worksheet, {
+      id: worksheet.client_acknowledgement.id,
+      kind: "acknowledged",
+      signer_name: signerName,
+      signer_role: req.body.signer_role,
+      acknowledged_by_user_id: actor.id,
+      client_id: actor.client_id || null,
+      dispatch_card_grant_id: activeGrant ? activeGrant.id : null,
+      timestamp: acknowledgedAt,
+      evidence_reference: worksheet.client_acknowledgement.evidence_reference,
+      authority_snapshot: authz.snapshot || null,
+      superseded_by: null,
+      supersession_reason: null,
+      return_reason: null
+    });
+  }
 
   req.store.audit(req.db, actor, "field_worksheet", worksheet.id, "WORKSHEET_CLIENT_ACKNOWLEDGED", before, worksheet);
   swapRevisionIfEligible(req.db, req.store, actor, worksheet);
@@ -215,6 +301,15 @@ export function returnWorksheetByClient(req, res) {
   if (!isClientViewer(actor) || !actor.client_id || ownerClientId !== actor.client_id) {
     return res.status(403).json({ success: false, message: "A client representative may return only their own client's entries." });
   }
+
+  let returnGrant = null;
+  if (flag("BATCH_C")) {
+    if (rejectOffline(req, res)) return;
+    const grantCheck = requireGrant(req.db, actor, worksheet, res);
+    if (!grantCheck.ok) return;
+    returnGrant = grantCheck.grant;
+  }
+
   if (worksheet.status !== "Submitted") {
     return res.status(400).json({ success: false, message: `This entry is in ${worksheet.status} status and is not awaiting client confirmation, so it cannot be returned.` });
   }
@@ -233,6 +328,25 @@ export function returnWorksheetByClient(req, res) {
   worksheet.client_return = entry;
   worksheet.return_history = [...(worksheet.return_history || []), entry];
   worksheet.updated_at = now;
+
+  if (flag("BATCH_C")) {
+    appendHistoryEntry(worksheet, {
+      id: entry.id,
+      kind: "returned",
+      signer_name: actor.name || null,
+      signer_role: null,
+      acknowledged_by_user_id: actor.id,
+      client_id: actor.client_id || null,
+      dispatch_card_grant_id: returnGrant ? returnGrant.id : null,
+      timestamp: now,
+      evidence_reference: null,
+      authority_snapshot: null,
+      superseded_by: null,
+      supersession_reason: null,
+      return_reason: req.body.reason
+    });
+  }
+
   req.store.audit(req.db, actor, "field_worksheet", worksheet.id, "WORKSHEET_RETURNED", before, worksheet);
   res.json({ success: true, data: worksheetSummary(req.db, worksheet) });
 }
@@ -260,6 +374,14 @@ export function reviseWorksheet(req, res) {
   }
   if (original.superseded_by) {
     return res.status(400).json({ success: false, message: "This timesheet has already been superseded by a later revision." });
+  }
+
+  // Batch C freeze check
+  if (flag("BATCH_C")) {
+    const dispatchRecord = resolveDispatch(req.db, original);
+    if (dispatchRecord && dispatchHasActiveInvoice(req.db, dispatchRecord)) {
+      return res.status(409).json({ success: false, code: "DISPATCH_FROZEN", message: INVOICED_DISPATCH_MESSAGE });
+    }
   }
 
   if (flag("SALES_ACCESS") && actor.role === roles.SALES && original.status !== "Captured_From_Signed_Paper") {
@@ -316,6 +438,26 @@ export function reviseWorksheet(req, res) {
     original.superseded_by = revision.id;
   }
   original.updated_at = now;
+
+  // Batch C Commit 3: only append superseded history entry when supersession takes effect immediately.
+  // When deferSupersede is true, supersession is recorded during swapRevisionIfEligible.
+  if (flag("BATCH_C") && !deferSupersede) {
+    appendHistoryEntry(original, {
+      id: req.store.id("ackh"),
+      kind: "superseded",
+      signer_name: actor.name || null,
+      signer_role: null,
+      acknowledged_by_user_id: actor.id,
+      client_id: null,
+      dispatch_card_grant_id: null,
+      timestamp: now,
+      evidence_reference: null,
+      authority_snapshot: null,
+      superseded_by: revision.id,
+      supersession_reason: req.body.reason,
+      return_reason: null
+    });
+  }
 
   req.db.field_worksheets.push(revision);
   if (!deferSupersede) req.store.audit(req.db, actor, "field_worksheet", original.id, "WORKSHEET_SUPERSEDED", before, original);

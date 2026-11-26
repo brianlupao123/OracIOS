@@ -1,3 +1,4 @@
+import { flag } from "./timesheetWorkflow.js";
 import { z } from "zod";
 import { roles } from "./permissions.js";
 import { SERVICE_REQUEST_URGENCIES, TRIAGE_DECISION_NAMES } from "./serviceRequestRules.js";
@@ -206,20 +207,50 @@ export const ReviewWorksheetSchema = z.object({
   comment: z.string().optional()
 });
 
+function dynamicSchema(getter) {
+  const base = z.lazy(getter);
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      if (prop === "parse" || prop === "safeParse") {
+        return (val, ...args) => getter()[prop](val, ...args);
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}
+
 // Chat B — client acknowledgement. Phone/tablet touch input is acceptable;
 // what makes this evidence (not just a canvas doodle) is that it is stored
 // server-side with a signer identity, an explicit acknowledgement, a
 // timestamp and an immutable reference, all set only by this endpoint.
-export const ClientAcknowledgeWorksheetSchema = z.object({
+const LegacyClientAcknowledgeWorksheetSchema = z.object({
   signer_name: z.string().trim().min(1, "Signer name is required"),
   signer_role: z.string().trim().min(1, "Signer declared role is required"),
   acknowledgement: z.literal(true, { errorMap: () => ({ message: "Explicit acknowledgement is required" }) })
 });
 
+const BatchCClientAcknowledgeWorksheetSchema = z.object({
+  signer_name: z.string().trim().optional(),
+  signer_role: z.string().trim().min(1, "Signer declared role is required"),
+  acknowledgement: z.literal(true, { errorMap: () => ({ message: "Explicit acknowledgement is required" }) })
+}).strict();
+
+export const ClientAcknowledgeWorksheetSchema = dynamicSchema(() =>
+  flag("BATCH_C") ? BatchCClientAcknowledgeWorksheetSchema : LegacyClientAcknowledgeWorksheetSchema
+);
+
 // Client return-with-reason (Implementation Contract step 1). A reason is mandatory.
-export const ClientReturnWorksheetSchema = z.object({
+const LegacyClientReturnWorksheetSchema = z.object({
   reason: z.string().trim().min(3, "A reason of at least 3 characters is required to return a Timesheet").max(1000)
 });
+
+const BatchCClientReturnWorksheetSchema = z.object({
+  reason: z.string().trim().min(3, "A reason of at least 3 characters is required to return a Timesheet").max(1000)
+}).strict();
+
+export const ClientReturnWorksheetSchema = dynamicSchema(() =>
+  flag("BATCH_C") ? BatchCClientReturnWorksheetSchema : LegacyClientReturnWorksheetSchema
+);
 
 // Chat B — corrections after client acknowledgement or supervisor approval
 // must go through a new, reasoned, linked revision rather than editing
@@ -227,6 +258,20 @@ export const ClientReturnWorksheetSchema = z.object({
 export const ReviseWorksheetSchema = z.object({
   reason: z.string().trim().min(1, "A reason is required to revise an acknowledged or approved worksheet")
 });
+
+// Batch C Commit 3 — batch confirmation schema.
+// When Batch C is ON, strictly validate fields and reject unexpected attributes.
+// When Batch C is OFF, preserve legacy contract (pass through to controller).
+const BatchCBatchConfirmTimesheetsSchema = z.object({
+  ids: z.array(z.string()).min(1, "Select at least one Timesheet").max(50, "A batch cannot exceed 50 Timesheets"),
+  signer_name: z.string().trim().optional(),
+  signer_role: z.string().trim().min(1, "Signer declared role is required"),
+  acknowledgement: z.literal(true, { errorMap: () => ({ message: "Explicit acknowledgement is required" }) })
+}).strict();
+
+export const BatchConfirmTimesheetsSchema = dynamicSchema(() =>
+  flag("BATCH_C") ? BatchCBatchConfirmTimesheetsSchema : z.any()
+);
 
 const DailyTimesheetEntrySchema = z.object({
   kind: z.enum(["entry", "separator"]).optional(),

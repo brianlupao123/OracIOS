@@ -19,6 +19,7 @@ import {
   AssignDispatchSupervisorSchema, ApproveAmendmentSchema,
   UpdateWorksheetSchema, ReviewKioskTimesheetSchema,
   ClientAcknowledgeWorksheetSchema, ClientReturnWorksheetSchema, ReviseWorksheetSchema,
+  BatchConfirmTimesheetsSchema,
   CreateDailyTimesheetSchema, UpdateDailyTimesheetSchema, ReviewDailyTimesheetSchema,
   CreateContractorLogSchema, UpdateContractorLogSchema, ReviewContractorLogSchema
 } from "../../schemas.js";
@@ -195,7 +196,7 @@ commercialRouter.post("/field_worksheets/:id/v5-paper-signature", validate(V5Pap
 commercialRouter.post("/field_worksheets/:id/v5-supervisor-confirmation", validate(V5SupervisorConfirmationSchema), confirmV5Timesheet);
 commercialRouter.post("/field_worksheets/paper-capture", capturePaperTimesheet);
 commercialRouter.post("/timesheet-paper-custody", logPaperCustody);
-commercialRouter.post("/field_worksheets/batch-confirm", batchConfirmTimesheets);
+commercialRouter.post("/field_worksheets/batch-confirm", validate(BatchConfirmTimesheetsSchema), batchConfirmTimesheets);
 commercialRouter.post("/timesheets/reminders/run", runTimesheetReminders);
 commercialRouter.get("/timesheets/paper-sampling", getPaperSampling);
 

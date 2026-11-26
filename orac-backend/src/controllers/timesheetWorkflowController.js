@@ -3,6 +3,10 @@
 // movement is ever created here; no rate field is ever read or returned except
 // by the Finance/Admin variance handlers (hours only).
 import { requirePermission, hasPermission, roles } from "../permissions.js";
+import { activeGrantFor } from "../dispatchCardGrants.js";
+import { dispatchHasActiveInvoice, INVOICED_DISPATCH_MESSAGE } from "../dispatchFreeze.js";
+import { appendHistoryEntry } from "../timesheetAcknowledgementHistory.js";
+const isClientViewer = (u) => u?.role === roles.CLIENT_VIEWER;
 function getActor(req) {
   return req.user?.id ? req.db.users.find((user) => user.id === req.user.id) : null;
 }
@@ -212,15 +216,70 @@ export function logPaperCustody(req, res) {
 export function batchConfirmTimesheets(req, res) {
   const actor = getActor(req); requirePermission(actor, "acknowledgeWorksheet");
   if (!flag("BATCH_CONFIRM")) return off(res, "Batch confirmation");
+
+  // Batch C Commit 3 online-only
+  if (flag("BATCH_C") && (req.body?._offline || req.body?._replayed || req.headers?.["x-offline-replay"])) {
+    return res.status(400).json({ success: false, code: "ONLINE_ONLY", message: "Acknowledgement, return and batch confirmation require an online connection." });
+  }
+
+  // Batch C Commit 3: signer identity from authenticated account
+  let signerName = req.body.signer_name;
+  if (flag("BATCH_C")) {
+    if (!actor.name || !actor.name.trim()) {
+      return res.status(400).json({ success: false, code: "ACCOUNT_NAME_REQUIRED", message: "Your account must have a name set before you can acknowledge." });
+    }
+    if (req.body.signer_name && req.body.signer_name.trim() && req.body.signer_name.trim().toLowerCase() !== actor.name.trim().toLowerCase()) {
+      return res.status(400).json({ success: false, code: "SIGNER_NAME_MISMATCH", message: "The signer name must match your account name." });
+    }
+    signerName = actor.name;
+  }
+
   const ids = Array.isArray(req.body.ids) ? [...new Set(req.body.ids)] : [];
   if (!ids.length || ids.length > 50) return res.status(400).json({ success: false, message: "Select between 1 and 50 Timesheets explicitly. Nothing is pre-selected." });
   if (req.body.acknowledgement !== true) return res.status(400).json({ success: false, message: "Explicit confirmation is required." });
   const sheets = ids.map((id) => req.db.field_worksheets.find((w) => w.id === id));
-  const dispatches = new Set(sheets.filter(Boolean).map((w) => w.dispatch_card_id));
-  if (dispatches.size > 1) return res.status(400).json({ success: false, message: "A batch must be for a single dispatch." });
+
+  // Batch C: apply the single-dispatch limit only to authorised items.
+  // Unauthorised items receive per-item refusals and do not block an otherwise valid batch.
+  // If authorised items span two or more dispatches, reject the batch before writing any confirmations.
+  // Legacy (flag off): preserve original single-dispatch contract across all found sheets.
+  if (flag("BATCH_C")) {
+    const authorisedDispatches = new Set();
+    for (const ws of sheets) {
+      if (!ws || clientForWorksheet(req.db, ws)?.id !== actor.client_id) continue;
+      if (isClientViewer(actor)) {
+        const grant = activeGrantFor(req.db, actor.id, ws.dispatch_card_id);
+        if (!grant || grant.client_id !== actor.client_id) continue;
+      }
+      authorisedDispatches.add(ws.dispatch_card_id);
+    }
+    if (authorisedDispatches.size > 1) {
+      return res.status(400).json({ success: false, message: "A batch must be for a single dispatch." });
+    }
+  } else {
+    const dispatches = new Set(sheets.filter(Boolean).map((w) => w.dispatch_card_id));
+    if (dispatches.size > 1) return res.status(400).json({ success: false, message: "A batch must be for a single dispatch." });
+  }
+
   const results = ids.map((id, i) => {
     const ws = sheets[i];
     if (!ws || clientForWorksheet(req.db, ws)?.id !== actor.client_id) return { id, ok: false, code: "NOT_FOUND_OR_OUT_OF_SCOPE" };
+
+    let grant = null;
+    if (flag("BATCH_C") && isClientViewer(actor)) {
+      grant = activeGrantFor(req.db, actor.id, ws.dispatch_card_id);
+      if (!grant || grant.client_id !== actor.client_id) {
+        return { id, ok: false, code: "NO_ACTIVE_GRANT", message: "No active dispatch-card grant for this worksheet's dispatch." };
+      }
+    }
+
+    if (flag("BATCH_C")) {
+      const dispatch = req.db.dispatch_cards?.find((d) => d.id === ws.dispatch_card_id);
+      if (dispatch && dispatchHasActiveInvoice(req.db, dispatch)) {
+        return { id, ok: false, code: "DISPATCH_FROZEN", message: INVOICED_DISPATCH_MESSAGE };
+      }
+    }
+
     if (ws.status !== "Submitted") return { id, ok: false, code: "NOT_AWAITING_CONFIRMATION" };
     if (ws.duplicate_conflict || ws.internal_exception_flag || (ws.hours_breakdown?.ot_15 || 0) + (ws.hours_breakdown?.ot_20 || 0) > 0 || (ws.warnings || []).length)
       return { id, ok: false, code: "OPEN_INDIVIDUALLY", message: "This record has overtime, a warning or an exception and must be opened and confirmed on its own." };
@@ -228,9 +287,28 @@ export function batchConfirmTimesheets(req, res) {
     if (!gate.ok) return { id, ok: false, code: "AUTHORITY_REQUIRED", message: gate.message };
     const before = { ...ws }; const at = new Date().toISOString();
     ws.status = "Client_Acknowledged";
-    ws.client_acknowledgement = { id: req.store.id("wsack"), signer_name: req.body.signer_name, signer_role: req.body.signer_role, acknowledged_by_user_id: actor.id,
+    ws.client_acknowledgement = { id: req.store.id("wsack"), signer_name: signerName || req.body.signer_name, signer_role: req.body.signer_role, acknowledged_by_user_id: actor.id,
       acknowledged_at: at, evidence_reference: req.store.id("evd"), batch: true, ...(gate.snapshot ? { authority_snapshot: gate.snapshot } : {}) };
     ws.updated_at = at;
+
+    if (flag("BATCH_C")) {
+      appendHistoryEntry(ws, {
+        id: ws.client_acknowledgement.id,
+        kind: "acknowledged",
+        signer_name: signerName || req.body.signer_name,
+        signer_role: req.body.signer_role,
+        acknowledged_by_user_id: actor.id,
+        client_id: actor.client_id || null,
+        dispatch_card_grant_id: grant ? grant.id : null,
+        timestamp: at,
+        evidence_reference: ws.client_acknowledgement.evidence_reference,
+        authority_snapshot: gate.snapshot || null,
+        superseded_by: null,
+        supersession_reason: null,
+        return_reason: null
+      });
+    }
+
     req.store.audit(req.db, actor, "field_worksheet", ws.id, "WORKSHEET_CLIENT_ACKNOWLEDGED", before, ws);
     swapRevisionIfEligible(req.db, req.store, actor, ws);
     return { id, ok: true };

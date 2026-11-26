@@ -6,6 +6,7 @@
 // with safe defaults (see POLICY_DEFAULTS) and the dependent action stays blocked
 // until an Admin confirms the value.
 import { evaluateForDb, registerValidityHook } from "./timesheetEligibility.js";
+import { appendHistoryEntry } from "./timesheetAcknowledgementHistory.js";
 
 const flagOn = (name) => process.env[name] === "enabled";
 export const FLAGS = Object.freeze({
@@ -17,9 +18,10 @@ export const FLAGS = Object.freeze({
   BATCH_CONFIRM: "TIMESHEET_BATCH_CONFIRM",         // step 8
   REMINDERS: "TIMESHEET_REMINDERS",                 // step 8
   OPS_RESTRICT: "TIMESHEET_OPS_RESTRICT",           // step 9: remove Ops/Supervisor Worksheet + daily approval
-  PO_VALIDITY: "TIMESHEET_PO_VALIDITY"              // step 9: dispatch/PO validity gate
+  PO_VALIDITY: "TIMESHEET_PO_VALIDITY",             // step 9: dispatch/PO validity gate
+  BATCH_C: "ORAC_BATCH_C_ENABLED"                   // Batch C Commit 3
 });
-export const flag = (key) => flagOn(FLAGS[key]);
+export const flag = (key) => flagOn(FLAGS[key]) || (key === "BATCH_C" && process.env.TIMESHEET_BATCH_C === "enabled");
 
 // ---- Owner configuration (13 confirmations) with SAFE defaults ---------------
 export const POLICY_DEFAULTS = Object.freeze({
@@ -333,6 +335,23 @@ export function swapRevisionIfEligible(db, store, actor, revision) {
   if (!evaluateForDb(db, revision).eligible) return false;
   const before = { ...orig };
   orig.superseded_by = revision.id; delete orig.pending_revision_id; orig.updated_at = new Date().toISOString();
+  if (flag("BATCH_C")) {
+    appendHistoryEntry(orig, {
+      id: store.id("ackh"),
+      kind: "superseded",
+      signer_name: actor?.name || null,
+      signer_role: null,
+      acknowledged_by_user_id: actor?.id || null,
+      client_id: null,
+      dispatch_card_grant_id: null,
+      timestamp: orig.updated_at,
+      evidence_reference: null,
+      authority_snapshot: null,
+      superseded_by: revision.id,
+      supersession_reason: revision.revision_reason || null,
+      return_reason: null
+    });
+  }
   store.audit(db, actor, "field_worksheet", orig.id, "WORKSHEET_SUPERSEDED", before, orig);
   return true;
 }
