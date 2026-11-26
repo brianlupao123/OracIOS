@@ -265,38 +265,39 @@ test("Alert Resolution: supervisor resolves threshold breach with maintenance ac
 
 test("Offline Sync: batches offline mutations with idempotency and non-destructive merge", () => {
   const sharedDb = {
-    timesheets: [
-      { id: "ts-001", worker_name: "Artisan Takunda", normal_hours: 8, status: "Draft", created_at: "2026-11-17T06:00:00Z" }
+    equipment_tags: [
+      { id: "eq-001", plant_section_id: "sec-01", tag_code: "PUMP-01", equipment_name: "Slurry Pump", criticality: "high", created_at: "2026-11-17T06:00:00Z" }
     ],
     offline_sync_journal: []
   };
 
   const { req, res } = createMockReqRes({
+    user: { id: "u-admin", role: "Admin", name: "Admin Lead" },
     db: sharedDb,
     body: {
       client_device_id: "TAB-TECH-04",
       mutations: [
         {
           client_mutation_id: "mut-001",
-          entity_type: "timesheet",
-          entity_id: "ts-002",
+          entity_type: "equipment_tag",
+          entity_id: "eq-002",
           operation: "INSERT",
           client_timestamp: "2026-11-17T07:00:00Z",
           payload: {
-            worker_name: "Artisan Farai",
-            normal_hours: 8,
-            overtime_hours: 2,
-            status: "Submitted"
+            plant_section_id: "sec-02",
+            tag_code: "PUMP-02",
+            equipment_name: "Feed Pump 02",
+            criticality: "medium"
           }
         },
         {
           client_mutation_id: "mut-002",
-          entity_type: "timesheet",
-          entity_id: "ts-001",
+          entity_type: "equipment_tag",
+          entity_id: "eq-001",
           operation: "UPDATE",
           client_timestamp: "2026-11-17T07:30:00Z",
           payload: {
-            notes: "Suction liner relining completed on underground slurry station."
+            criticality: "critical"
           }
         }
       ]
@@ -311,22 +312,22 @@ test("Offline Sync: batches offline mutations with idempotency and non-destructi
   assert.equal(data.committed_count, 2);
   assert.equal(data.conflict_count, 0);
 
-  // Verifying inserted timesheet
-  const inserted = sharedDb.timesheets.find((t) => t.id === "ts-002");
+  // Verifying inserted equipment_tag
+  const inserted = sharedDb.equipment_tags.find((t) => t.id === "eq-002");
   assert.ok(inserted);
-  assert.equal(inserted.worker_name, "Artisan Farai");
+  assert.equal(inserted.equipment_name, "Feed Pump 02");
 
-  // Verifying updated timesheet has merged notes
-  const updated = sharedDb.timesheets.find((t) => t.id === "ts-001");
+  // Verifying updated equipment_tag has merged criticality
+  const updated = sharedDb.equipment_tags.find((t) => t.id === "eq-001");
   assert.ok(updated);
-  assert.equal(updated.normal_hours, 8);
-  assert.equal(updated.notes, "Suction liner relining completed on underground slurry station.");
+  assert.equal(updated.tag_code, "PUMP-01");
+  assert.equal(updated.criticality, "critical");
 
   // Idempotency: replaying exact same batch mutations must not duplicate
-  const { req: req2, res: res2 } = createMockReqRes({ db: sharedDb, body: req.body });
+  const { req: req2, res: res2 } = createMockReqRes({ user: { id: "u-admin", role: "Admin", name: "Admin Lead" }, db: sharedDb, body: req.body });
   syncBatchMutations(req2, res2);
   assert.equal(res2.getStatusCode(), 200);
   assert.equal(res2.getData().results[0].replayed, true);
   assert.equal(res2.getData().results[1].replayed, true);
-  assert.equal(sharedDb.timesheets.length, 2);
+  assert.equal(sharedDb.equipment_tags.length, 2);
 });

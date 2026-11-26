@@ -2,6 +2,7 @@
 //
 // Controller for Subsystem 13: Offline Sync Engine & Conflict Resolution.
 // Ingests batched mutations from offline field devices and reconciles state.
+// Hardened per Batch C generic sync requirements (per-operation permission enforcement).
 
 import {
   BatchSyncSchema,
@@ -15,16 +16,25 @@ import {
 
 function resolveActor(req) {
   if (!req.user?.id) return null;
-  return (req.db?.users || []).find((user) => user.id === req.user.id) || null;
+  const user = (req.db?.users || []).find((u) => u.id === req.user.id);
+  if (user) {
+    return { ...user, is_active: user.is_active !== false };
+  }
+  return null;
 }
 
-function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operations", "Supervisor", "Technician"]) {
+function checkPermission(actor, allowedRoles = null) {
   if (!actor) {
     const err = new Error("Unauthorized. Authentication required.");
     err.statusCode = 401;
     throw err;
   }
-  if (!allowedRoles.includes(actor.role)) {
+  if (actor.is_active === false) {
+    const err = new Error("Forbidden: Inactive user");
+    err.statusCode = 403;
+    throw err;
+  }
+  if (allowedRoles && !allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
@@ -34,7 +44,7 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
 export const syncBatchMutations = (req, res) => {
   try {
     const actor = resolveActor(req);
-    checkPermission(actor, ["Admin", "Management", "Operations", "Supervisor", "Technician"]);
+    checkPermission(actor);
 
     const parseResult = BatchSyncSchema.safeParse(req.body);
     if (!parseResult.success) {
