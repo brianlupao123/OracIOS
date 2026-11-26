@@ -146,7 +146,12 @@ export const permissions = {
   manageArtisanDispatchAllocations: [roles.ADMIN, roles.HR, roles.OPERATIONS],
   // ── Booking & Schedule (public website integration) ──
   manageBookings: [roles.ADMIN, roles.MANAGEMENT, roles.SALES],
-  manageBookingSettings: [roles.ADMIN, roles.MANAGEMENT, roles.OPERATIONS]
+  manageBookingSettings: [roles.ADMIN, roles.MANAGEMENT, roles.OPERATIONS],
+  // ── Batch C Commit 2: Client Viewer dispatch-card grants ──
+  // Admin-only: create or revoke a time-limited grant that lets a named
+  // Client Viewer see a specific dispatch card (no rates, billing, payroll).
+  grantDispatchCardAccess: [roles.ADMIN],
+  revokeDispatchCardAccess: [roles.ADMIN]
 };
 
 // Timesheet workflow packet (contract steps 3-9). Every overlay is DARK: with its

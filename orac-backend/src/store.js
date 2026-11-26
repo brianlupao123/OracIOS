@@ -223,6 +223,8 @@ function seedData() {
     access_requests: [],
     // Client Service Requests: Client Viewer -> Sales/Operations triage -> lead.
     service_requests: [],
+    // Batch C Commit 2: Client Viewer dispatch-card grants (time-limited, Admin-only).
+    dispatch_card_grants: [],
     // Internal Work Requests: controlled staff-to-staff requests (never client-facing).
     internal_work_requests: [],
     // Subsystem 3: Supply Chain & Procurement collections
@@ -281,7 +283,8 @@ export const SCHEMA_COLLECTIONS = [
   "jsa_records", "client_prs",
   "virtual_technical_surveys", "client_job_feedbacks", "qr_optical_tokens",
   "iot_sensor_telemetries", "iot_threshold_alerts", "offline_sync_journal",
-  "attendance_badges", "attendance_pin_credentials", "attendance_events"
+  "attendance_badges", "attendance_pin_credentials", "attendance_events",
+  "dispatch_card_grants"
 ];
 
 export function normalizeDb(db, { seedDemoRecords = process.env.NODE_ENV !== "production" } = {}) {

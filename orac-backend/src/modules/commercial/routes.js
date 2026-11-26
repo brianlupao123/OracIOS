@@ -69,6 +69,7 @@ import {
   getV5SignatureState, recordV5PaperSignature, confirmV5Timesheet
 } from "../../controllers/v5SignatureController.js";
 import { getQuoteTrail } from "../../controllers/trailController.js";
+import { clientViewerDispatchGate, grantedDispatchJobCard, createGrant, listGrants, revokeGrant } from "../../controllers/dispatchCardGrantController.js";
 
 const commercialRouter = Router();
 
@@ -97,7 +98,7 @@ commercialRouter.post("/quotes/:id/po-scope-evidence", attachPoScopeEvidence);
 commercialRouter.post("/purchase_orders/:id/amendments", validate(ApproveAmendmentSchema), approveAmendment);
 
 // ── Dispatches & Worksheets ─────────────────────────────────────────
-commercialRouter.get("/dispatch_cards/:id/job-card", getDispatchJobCard);
+commercialRouter.get("/dispatch_cards/:id/job-card", clientViewerDispatchGate, grantedDispatchJobCard(getDispatchJobCard));
 commercialRouter.get("/dispatch_cards/:id/invoice-readiness", getDispatchInvoiceReadiness);
 commercialRouter.post("/dispatch_cards/:id/timesheets", validate(AddTimesheetSchema), addTimesheet);
 commercialRouter.get("/dispatch_cards/:id/timesheets", listDispatchTimesheets);
@@ -161,6 +162,12 @@ commercialRouter.patch("/timesheet-policy", updateTimesheetPolicy);
 commercialRouter.get("/timesheet-authorities", listTimesheetAuthorities);
 commercialRouter.post("/timesheet-authorities", createTimesheetAuthority);
 commercialRouter.post("/timesheet-authorities/:id/revoke", revokeTimesheetAuthority);
+
+// ── Dispatch Card Grants (Batch C Commit 2) ─────────────────────────
+commercialRouter.post("/dispatch-card-grants", createGrant);
+commercialRouter.get("/dispatch-card-grants", listGrants);
+commercialRouter.post("/dispatch-card-grants/:id/revoke", revokeGrant);
+
 commercialRouter.patch("/clients/:id/timesheet-cutover", setClientCutover);
 commercialRouter.get("/timesheets/rate-free", listTimesheetsRateFree);
 
