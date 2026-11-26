@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { clearResetToken } from "./accountTokens.js";
 
 // One-time account setup / password reset tokens.
 //
@@ -16,23 +17,42 @@ export const SETUP_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 const sha256Hex = (value) => crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
 
+function setupExpiry(user) {
+  return Object.hasOwn(user, "setup_token_expires_at")
+    ? user.setup_token_expires_at
+    : user.reset_token_expires_at;
+}
+
+export function hasActiveSetupToken(user, now = Date.now()) {
+  if (!user) return false;
+  const hasDigest = typeof user.reset_token_hash === "string" && Boolean(user.reset_token_hash);
+  const hasLegacyToken = typeof user.reset_token === "string" && Boolean(user.reset_token)
+    && !user.reset_token.startsWith("sha256:");
+  const expiry = Number(setupExpiry(user));
+  return (hasDigest || hasLegacyToken) && Number.isFinite(expiry) && expiry > 0 && now <= expiry;
+}
+
 export function issueSetupToken(user, now = Date.now()) {
   const token = crypto.randomBytes(32).toString("hex");
+  clearResetToken(user);
+  delete user.reset_token;
   user.reset_token_hash = sha256Hex(token);
-  user.reset_token_expires_at = now + SETUP_TOKEN_TTL_MS;
-  delete user.reset_token; // never keep a plaintext token beside the hash
-  return { token, expiresAt: user.reset_token_expires_at };
+  user.setup_token_expires_at = now + SETUP_TOKEN_TTL_MS;
+  return { token, expiresAt: user.setup_token_expires_at };
 }
 
 export function clearSetupToken(user) {
+  const modernReset = typeof user.reset_token === "string" && user.reset_token.startsWith("sha256:");
+  if (!Object.hasOwn(user, "setup_token_expires_at") && !modernReset) {
+    clearResetToken(user); // legacy setup used the shared fields
+  }
   user.reset_token_hash = null;
-  user.reset_token = null;
-  user.reset_token_expires_at = null;
+  user.setup_token_expires_at = null;
 }
 
 export function verifySetupToken(user, provided, now = Date.now()) {
   if (!user || typeof provided !== "string" || !provided) return false;
-  if (!user.reset_token_expires_at || now > user.reset_token_expires_at) return false;
+  if (!hasActiveSetupToken(user, now)) return false;
 
   if (typeof user.reset_token_hash === "string" && user.reset_token_hash) {
     const expected = Buffer.from(user.reset_token_hash, "utf8");

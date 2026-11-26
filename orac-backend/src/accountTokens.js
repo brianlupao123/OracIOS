@@ -16,6 +16,10 @@ export function hashToken(rawToken) {
 
 export function issueResetToken(user, now = Date.now()) {
   const token = crypto.randomBytes(32).toString("hex");
+  if (user.reset_token_hash && !Object.hasOwn(user, "setup_token_expires_at")) {
+    // Preserve the old setup deadline before reusing the legacy reset field.
+    user.setup_token_expires_at = user.reset_token_expires_at ?? null;
+  }
   user.reset_token = hashToken(token);
   user.reset_token_expires_at = now + RESET_TOKEN_TTL_MS;
   return { token, expiresAt: user.reset_token_expires_at };

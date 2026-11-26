@@ -2,12 +2,13 @@ import { generateToken, revokeSessions } from "../middleware/auth.js";
 import { config } from "../config.js";
 import bcrypt from "bcrypt";
 import crypto from "node:crypto";
-import { verifyResetToken, clearResetToken, toPublicUser } from "../accountTokens.js";
-import { verifySetupToken, clearSetupToken } from "../setupTokens.js";
+import { RESET_TOKEN_TTL_MS, issueResetToken, verifyResetToken, clearResetToken, toPublicUser } from "../accountTokens.js";
+import { hasActiveSetupToken, verifySetupToken, clearSetupToken } from "../setupTokens.js";
 import { totpRequiredFor } from "../totpPolicy.js";
 import { beginTotpChallenge } from "./totpController.js";
 import { verifyGoogleIdToken, linkGoogleAccount } from "../services/googleOAuthService.js";
 import { recordCommunicationEvidence } from "../services/communicationAuditService.js";
+import { getTransportConfig, isRecipientPermitted, sendEmail } from "../services/communicationTransportService.js";
 
 // Compared against when the account does not exist or is inactive, so the work
 // done (and the response time) does not reveal whether an email has an account.
@@ -73,17 +74,31 @@ export const getMe = (req, res) => {
 };
 
 // -- Forgot / Reset Password ------------------------------------------------
-// No owner-approved delivery adapter exists. A reset request therefore has
-// generic anti-enumeration behaviour but deliberately issues no reset token
-// until a secure delivery path is implemented. Tokens and reset links must
-// never be logged, returned, or placed in audit records.
+// The public response is deliberately independent of account or delivery status.
+// The persistence middleware writes the token digest before it sends the response.
 
 function findUserByEmail(req, email) {
   const normalized = String(email || "").trim().toLowerCase();
   return req.db.users.find((u) => String(u?.email || "").trim().toLowerCase() === normalized);
 }
 
-export const requestPasswordReset = (req, res) => {
+function resetPageUrl() {
+  try {
+    const origin = new URL(process.env.FRONTEND_BASE_URL);
+    if (origin.protocol !== "https:" || origin.username || origin.password
+      || origin.pathname !== "/" || origin.search || origin.hash) return null;
+    return new URL("/reset-password", origin);
+  } catch {
+    return null;
+  }
+}
+
+function resetReissueCooldownMs() {
+  const seconds = Number(process.env.ORAC_PASSWORD_RESET_REISSUE_COOLDOWN_SECONDS);
+  return (Number.isInteger(seconds) && seconds >= 60 && seconds <= RESET_TOKEN_TTL_MS / 1000 ? seconds : 300) * 1000;
+}
+
+function handlePasswordResetRequest(req, res, deliver) {
   const email = req.body.email;
   if (!email) {
     return res.status(400).json({ success: false, message: "Email is required." });
@@ -99,6 +114,35 @@ export const requestPasswordReset = (req, res) => {
   };
 
   if (!user || !user.is_active) {
+    return res.json(genericResponse);
+  }
+
+  const page = process.env.ORAC_PASSWORD_RESET_EMAIL_ENABLED === "true" ? resetPageUrl() : null;
+  const transport = page && getTransportConfig();
+  if (page && transport.isConfigured && !transport.dryRun && isRecipientPermitted(user.email)
+    && typeof req.checkpointWrite === "function") {
+    const now = Date.now();
+    if (hasActiveSetupToken(user, now)) return res.json(genericResponse);
+    const resetExpiry = Number(user.reset_token_expires_at);
+    if (user.reset_token && resetExpiry > now
+      && now < resetExpiry - RESET_TOKEN_TTL_MS + resetReissueCooldownMs()) {
+      return res.json(genericResponse);
+    }
+    const { token } = issueResetToken(user, now);
+    const recipient = user.email;
+    page.hash = new URLSearchParams({ email: recipient, token }).toString();
+    req.store.audit(req.db, user, "user", user.id, "PASSWORD_RESET_REQUESTED", null, { delivery: "scheduled_after_commit" });
+    res.once("finish", () => {
+      if (res.statusCode !== 200) return;
+      void Promise.resolve().then(() => deliver({
+        to: recipient,
+        subject: "ORAC password reset",
+        body: `Open this link to reset your ORAC password. It expires in 30 minutes and can be used once.\n\n${page.href}\n\nIf you did not request this, you can ignore this email.`
+      })).catch(() => {
+        // Provider errors may contain message data. Do not log them or retry an uncertain send.
+        console.warn("ORAC account recovery mail attempt did not complete.");
+      });
+    });
     return res.json(genericResponse);
   }
 
@@ -128,7 +172,13 @@ export const requestPasswordReset = (req, res) => {
   }
 
   return res.json(genericResponse);
-};
+}
+
+export function makePasswordResetRequest(deliver = sendEmail) {
+  return (req, res) => handlePasswordResetRequest(req, res, deliver);
+}
+
+export const requestPasswordReset = makePasswordResetRequest();
 
 export const resetPassword = (req, res) => {
   const { email, token, new_password } = req.body;

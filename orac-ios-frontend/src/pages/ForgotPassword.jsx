@@ -27,10 +27,10 @@ export default function ForgotPassword() {
     <AuthShell tag="Password Recovery" maxWidth="max-w-[420px]">
             <div className="mb-8">
               <h1 className="text-2xl font-bold tracking-tight text-orac-text-primary sm:text-3xl">
-                Reset your password
+                Recover account access
               </h1>
               <p className="mt-2 text-sm text-orac-text-secondary sm:text-base">
-                Enter the email address registered on your account to request a secure password reset link.
+                Enter the email address registered on your account to record a recovery request.
               </p>
             </div>
 
@@ -40,10 +40,10 @@ export default function ForgotPassword() {
                   <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
-                  Reset Link Requested
+                  Recovery Request Received
                 </div>
                 <p className="mt-3 text-sm text-orac-text-secondary leading-relaxed">
-                  If that email belongs to an active account, a reset link has been dispatched. For the pilot environment, automated outbound email dispatch is restricted; please contact your System Administrator (admin@orac.co.zw) to retrieve your verified one-time reset link.
+                  If the address belongs to an active account, we received the recovery request. If password reset email is enabled, check your inbox. If no link arrives, contact your ORAC administrator through your usual support channel.
                 </p>
                 <Link
                   to="/login"
@@ -84,7 +84,7 @@ export default function ForgotPassword() {
                   disabled={busy}
                   className="w-full min-h-[44px] rounded-lg bg-orac-accent hover:bg-orac-accent-strong text-white font-semibold py-3 text-base shadow-xs disabled:opacity-50 transition-all cursor-pointer"
                 >
-                  {busy ? "Sending link..." : "Send reset link"}
+                  {busy ? "Submitting request..." : "Request recovery"}
                 </button>
 
                 <div className="pt-2 text-center">

@@ -123,6 +123,7 @@ const sensitiveAuditKeys = new Set([
   "reset_token",
   "reset_token_hash",
   "reset_token_expires_at",
+  "setup_token_expires_at",
   "totp"
 ]);
 
