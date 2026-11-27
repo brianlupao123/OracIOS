@@ -4,12 +4,14 @@
 import { Router } from "express";
 import {
   bookSurvey, listSurveys, getSurveyMeetingAccess,
-  completeSurveyWithNotes, extractSurveyAiScopeAndDraftQuote, getSurveySummary
+  completeSurveyWithNotes, extractSurveyAiScopeAndDraftQuote, getSurveySummary,
+  convertBookingToSurvey
 } from "../../controllers/surveyController.js";
 
 const surveysRouter = Router();
 
 surveysRouter.post("/surveys/book", bookSurvey);
+surveysRouter.post("/surveys/convert-booking", convertBookingToSurvey);
 surveysRouter.get("/surveys", listSurveys);
 surveysRouter.get("/surveys/:id/room", getSurveyMeetingAccess);
 surveysRouter.post("/surveys/:id/notes", completeSurveyWithNotes);

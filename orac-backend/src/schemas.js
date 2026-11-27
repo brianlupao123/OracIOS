@@ -1075,6 +1075,20 @@ export const BookVirtualSurveySchema = z.object({
   client_engineer_email: z.string().optional()
 });
 
+export const ConvertBookingToSurveySchema = z.object({
+  booking_id: z.string().trim().min(1, "Booking ID is required").optional(),
+  client_id: z.string().trim().min(1, "Client ID is required"),
+  client_name: z.string().trim().optional(),
+  equipment_tag_id: z.string().trim().optional(),
+  equipment_tag_name: z.string().trim().optional(),
+  mine_site: z.string().trim().optional(),
+  host_specialist_id: z.string().trim().min(1, "Host specialist ID is required"),
+  host_specialist_name: z.string().trim().optional(),
+  client_engineer_name: z.string().trim().optional(),
+  client_engineer_email: z.string().optional(),
+  duration_minutes: z.number().int().positive().default(60)
+});
+
 export const CompleteSurveyWithNotesSchema = z.object({
   wear_assessment_notes: z.string().min(3, "Wear assessment notes are required"),
   wear_depth_mm: z.number().nonnegative("Wear depth cannot be negative"),

@@ -13,6 +13,7 @@ import {
   listBookings,
   updateBookingStatus,
 } from "./controllers/websiteController.js";
+import { convertBookingToSurvey } from "../../controllers/surveyController.js";
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.get("/bookings/settings", authMiddleware, getBookingSettings);
 router.put("/bookings/settings", authMiddleware, updateBookingSettings);
 router.get("/bookings", authMiddleware, listBookings);
 router.patch("/bookings/:id/status", authMiddleware, updateBookingStatus);
+router.post("/bookings/:id/convert-survey", authMiddleware, convertBookingToSurvey);
 
 export default router;

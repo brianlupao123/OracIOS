@@ -5,6 +5,7 @@
 
 import {
   BookVirtualSurveySchema,
+  ConvertBookingToSurveySchema,
   CompleteSurveyWithNotesSchema,
   ExtractSurveyAiScopeSchema
 } from "../schemas.js";
@@ -47,6 +48,23 @@ function checkSurveyClient(actor, clientId = actor.client_id) {
   }
 }
 
+export function checkSpecialistConflict(surveys = [], specialistId, startsAtMs, durationMinutes = 60, excludeSurveyId = null) {
+  if (!specialistId || !Number.isFinite(startsAtMs)) return null;
+  const candidateEnd = startsAtMs + (durationMinutes || 60) * 60_000;
+  for (const s of surveys) {
+    if (excludeSurveyId && s.id === excludeSurveyId) continue;
+    if (s.host_specialist_id !== specialistId) continue;
+    if (s.status === "CANCELLED") continue;
+    const existingStart = surveyStartMs(s.scheduled_at);
+    if (!Number.isFinite(existingStart)) continue;
+    const existingEnd = existingStart + (s.duration_minutes || 60) * 60_000;
+    if (startsAtMs < existingEnd && candidateEnd > existingStart) {
+      return s;
+    }
+  }
+  return null;
+}
+
 
 export const bookSurvey = async (req, res) => {
   try {
@@ -70,6 +88,16 @@ export const bookSurvey = async (req, res) => {
     }
     const scheduledAt = new Date(startsAt).toISOString();
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
+
+    const conflict = checkSpecialistConflict(req.db.virtual_technical_surveys, val.host_specialist_id, startsAt, val.duration_minutes);
+    if (conflict) {
+      return res.status(409).json({
+        success: false,
+        code: "SPECIALIST_SCHEDULE_CONFLICT",
+        message: "Assigned specialist already has a consultation scheduled during this time.",
+        conflicting_survey_id: conflict.id
+      });
+    }
 
     const surveyId = req.store.id("srv");
     const surveyNumber = `VTS-${Date.now().toString().slice(-6)}`;
@@ -109,6 +137,150 @@ export const bookSurvey = async (req, res) => {
     req.store.audit(req.db, actor, "virtual_technical_survey", record.id, "SURVEY_BOOKED", null, record);
 
     return res.status(201).json({ success: true, data: record });
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ success: false, message: err.message });
+  }
+};
+
+export const convertBookingToSurvey = async (req, res) => {
+  try {
+    const actor = resolveActor(req);
+    checkPermission(actor, ["Admin", "Management", "Operations", "Sales"]);
+
+    const parseResult = ConvertBookingToSurveySchema.safeParse({
+      ...req.body,
+      booking_id: req.params?.id || req.body?.booking_id
+    });
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        message: parseResult.error.issues[0]?.message || "Invalid booking conversion data",
+        errors: parseResult.error.issues
+      });
+    }
+
+    const val = parseResult.data;
+    const bookingId = val.booking_id;
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: "Booking ID is required." });
+    }
+
+    req.db.survey_bookings = req.db.survey_bookings || [];
+    req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
+    req.db.leads = req.db.leads || [];
+    req.db.clients = req.db.clients || [];
+
+    const booking = req.db.survey_bookings.find((b) => b.id === bookingId || b.reference === bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, code: "BOOKING_NOT_FOUND", message: "Booking not found." });
+    }
+
+    if (booking.slot_status === "cancelled") {
+      return res.status(409).json({ success: false, code: "BOOKING_CANCELLED", message: "Cannot convert a cancelled booking." });
+    }
+
+    const client = req.db.clients.find((c) => c.id === val.client_id);
+    if (!client) {
+      return res.status(404).json({ success: false, code: "CLIENT_NOT_FOUND", message: "Client not found." });
+    }
+
+    // Idempotent retry: if booking was already converted, safely return existing consultation
+    const existing = req.db.virtual_technical_surveys.find((s) => s.booking_id === booking.id || s.id === booking.survey_id);
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        data: existing,
+        already_converted: true,
+        message: "Booking was already converted to a consultation."
+      });
+    }
+
+    const slotStr = `${booking.slot_date}T${booking.slot_time}`;
+    const startsAt = surveyStartMs(slotStr);
+    if (!Number.isFinite(startsAt)) {
+      return res.status(400).json({ success: false, message: "Booking has an invalid slot date or time." });
+    }
+    const scheduledAt = new Date(startsAt).toISOString();
+    const durationMinutes = val.duration_minutes || 60;
+
+    const conflict = checkSpecialistConflict(req.db.virtual_technical_surveys, val.host_specialist_id, startsAt, durationMinutes);
+    if (conflict) {
+      return res.status(409).json({
+        success: false,
+        code: "SPECIALIST_SCHEDULE_CONFLICT",
+        message: "Assigned specialist already has a consultation scheduled during this time.",
+        conflicting_survey_id: conflict.id
+      });
+    }
+
+    const surveyId = req.store.id("srv");
+    const surveyNumber = `VTS-${Date.now().toString().slice(-6)}`;
+    const room = await provisionDailyRoom(surveyId, `orac-${surveyId}`, durationMinutes, scheduledAt);
+
+    const lead = req.db.leads.find((l) => l.id === booking.lead_id || (l.booking_reference && l.booking_reference === booking.reference));
+    const specialistUser = (req.db.users || []).find((u) => u.id === val.host_specialist_id);
+    const hostSpecialistName = val.host_specialist_name || specialistUser?.name || "Lead Rubber Lining Specialist";
+
+    const survey = {
+      id: surveyId,
+      survey_number: surveyNumber,
+      client_id: val.client_id,
+      client_name: val.client_name || client.name || client.company_name || booking.company_name || "Client",
+      equipment_tag_id: val.equipment_tag_id || "TAG-GENERAL",
+      equipment_tag_name: val.equipment_tag_name || booking.survey_type || "Technical Survey Equipment",
+      mine_site: val.mine_site || booking.site_location || client.mine_site || "Main Site",
+      scheduled_at: scheduledAt,
+      duration_minutes: durationMinutes,
+      meeting_room_name: room.room_name,
+      meeting_room_url: room.room_url,
+      meeting_is_mock: room.is_mock,
+      status: "SCHEDULED",
+      host_specialist_id: val.host_specialist_id,
+      host_specialist_name: hostSpecialistName,
+      client_engineer_name: val.client_engineer_name || booking.contact_name || "",
+      client_engineer_email: val.client_engineer_email || booking.email || null,
+      booking_id: booking.id,
+      booking_reference: booking.reference,
+      lead_id: lead ? lead.id : null,
+      source: "public_booking_conversion",
+      wear_assessment_notes: null,
+      wear_depth_mm: null,
+      recommended_lining_spec: null,
+      ai_minutes_transcript: null,
+      ai_extracted_scope: null,
+      linked_quote_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    req.db.virtual_technical_surveys.push(survey);
+
+    const prevBookingStatus = booking.slot_status;
+    booking.survey_id = survey.id;
+    if (booking.slot_status === "requested") {
+      booking.slot_status = "confirmed";
+    }
+    booking.updated_at = new Date().toISOString();
+
+    if (lead) {
+      lead.survey_id = survey.id;
+      if (lead.status === "New") {
+        lead.status = "In Progress";
+      }
+      lead.updated_at = new Date().toISOString();
+    }
+
+    req.store.audit(req.db, actor, "virtual_technical_survey", survey.id, "SURVEY_CONVERTED_FROM_BOOKING", null, {
+      booking_id: booking.id,
+      lead_id: lead?.id,
+      survey_number: survey.survey_number
+    });
+    req.store.audit(req.db, actor, "survey_booking", booking.id, "SURVEY_SLOT_CONVERTED", { slot_status: prevBookingStatus }, {
+      slot_status: booking.slot_status,
+      survey_id: survey.id
+    });
+
+    return res.status(201).json({ success: true, data: survey });
   } catch (err) {
     return res.status(err.statusCode || 500).json({ success: false, message: err.message });
   }
