@@ -15,23 +15,20 @@ import { generateToken } from "../src/middleware/auth.js";
 
 /**
  * Opt-in control:
- * In accordance with repository integration-test conventions (e.g. postgresRealRehearsal.test.js),
- * real PostgreSQL tests are skipped under ordinary `npm test`.
+ * This suite requires ORAC_TEST_REAL_POSTGRES=1 to execute.
+ * To protect existing databases and prevent accidental overwrites of the 'main' store row,
+ * this suite does NOT support connecting to an externally supplied database URL (e.g. ORAC_TEST_DATABASE_URL).
+ * It runs strictly against a dedicated ephemeral loopback PostgreSQL instance spawned by the test run itself
+ * after verifying its unique cryptographic run token.
  *
  * To run:
- *   ORAC_TEST_REAL_POSTGRES=1 npm test
- * or:
  *   ORAC_TEST_REAL_POSTGRES=1 node --test tests/bookingConversionRealPostgres.test.js
- * or provide a dedicated disposable CI database:
- *   ORAC_TEST_DATABASE_URL=postgres://.../test_db npm test
  */
-const optInUrl = process.env.ORAC_TEST_DATABASE_URL;
-const optInFlag = process.env.ORAC_TEST_REAL_POSTGRES || process.env.TEST_REAL_POSTGRES;
-const isOptedIn = Boolean(optInUrl || optInFlag === "1" || optInFlag === "true" || optInFlag === "enabled");
+const isOptedIn = process.env.ORAC_TEST_REAL_POSTGRES === "1";
 
 const skipSuite = isOptedIn
   ? false
-  : "Real PostgreSQL booking conversion tests skipped by default; set ORAC_TEST_DATABASE_URL or ORAC_TEST_REAL_POSTGRES=1 to enable.";
+  : "Real PostgreSQL booking conversion tests skipped by default; set ORAC_TEST_REAL_POSTGRES=1 to enable.";
 
 function resolvePostgresBinaries() {
   const dirs = [];
@@ -85,16 +82,6 @@ async function getAvailablePort() {
       server.close((err) => (err ? reject(err) : resolve(port)));
     });
   });
-}
-
-function assertDisposableTarget(url) {
-  assert.ok(url, "ORAC_TEST_DATABASE_URL must be provided");
-  const parsed = new URL(url);
-  assert.match(
-    parsed.pathname.slice(1),
-    /test/i,
-    "Refusing connection: target PostgreSQL database name must contain 'test' to prevent accidental execution on production/application database"
-  );
 }
 
 function makeInitialDb() {
@@ -199,7 +186,7 @@ async function startEphemeralPostgres() {
   if (!bins) {
     throw new Error(
       "PostgreSQL binaries (postgres, initdb) not found on PATH or PG_BIN_DIR. " +
-      "Set PG_BIN_DIR or provide ORAC_TEST_DATABASE_URL for remote test execution."
+      "Install PostgreSQL or set PG_BIN_DIR to run this suite with ORAC_TEST_REAL_POSTGRES=1."
     );
   }
 
@@ -345,13 +332,8 @@ test("PostgreSQL Concurrency & HTTP Route Verification Suite", { skip: skipSuite
   let urlB;
 
   t.before(async () => {
-    if (optInUrl) {
-      assertDisposableTarget(optInUrl);
-      connectionString = optInUrl;
-    } else {
-      pgServer = await startEphemeralPostgres();
-      connectionString = pgServer.connectionString;
-    }
+    pgServer = await startEphemeralPostgres();
+    connectionString = pgServer.connectionString;
 
     poolA = new pg.Pool({ connectionString, max: 5 });
     poolB = new pg.Pool({ connectionString, max: 5 });
