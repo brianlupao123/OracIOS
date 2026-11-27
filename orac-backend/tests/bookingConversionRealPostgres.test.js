@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, execSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import pg from "pg";
 import express from "express";
@@ -10,13 +13,89 @@ import { createStore as createPostgresStore } from "../src/postgresStore.js";
 import { persistenceMiddleware } from "../src/persistenceMiddleware.js";
 import { generateToken } from "../src/middleware/auth.js";
 
-const PG_PORT = 54339;
-const PG_DATA = "C:\\Users\\BRIAN LUPAO\\AppData\\Local\\Temp\\pg_disposable_booking_test";
-const POSTGRES_BIN_DIR = "D:\\ORAC-Test\\PostgreSQL16\\bin";
-const POSTGRES_EXE = path.join(POSTGRES_BIN_DIR, "postgres.exe");
-const PG_CTL_EXE = path.join(POSTGRES_BIN_DIR, "pg_ctl.exe");
-const INITDB_EXE = path.join(POSTGRES_BIN_DIR, "initdb.exe");
-const CONNECTION_STRING = `postgres://postgres@127.0.0.1:${PG_PORT}/postgres`;
+/**
+ * Opt-in control:
+ * In accordance with repository integration-test conventions (e.g. postgresRealRehearsal.test.js),
+ * real PostgreSQL tests are skipped under ordinary `npm test`.
+ *
+ * To run:
+ *   ORAC_TEST_REAL_POSTGRES=1 npm test
+ * or:
+ *   ORAC_TEST_REAL_POSTGRES=1 node --test tests/bookingConversionRealPostgres.test.js
+ * or provide a dedicated disposable CI database:
+ *   ORAC_TEST_DATABASE_URL=postgres://.../test_db npm test
+ */
+const optInUrl = process.env.ORAC_TEST_DATABASE_URL;
+const optInFlag = process.env.ORAC_TEST_REAL_POSTGRES || process.env.TEST_REAL_POSTGRES;
+const isOptedIn = Boolean(optInUrl || optInFlag === "1" || optInFlag === "true" || optInFlag === "enabled");
+
+const skipSuite = isOptedIn
+  ? false
+  : "Real PostgreSQL booking conversion tests skipped by default; set ORAC_TEST_DATABASE_URL or ORAC_TEST_REAL_POSTGRES=1 to enable.";
+
+function resolvePostgresBinaries() {
+  const dirs = [];
+  if (process.env.PG_BIN_DIR) dirs.push(process.env.PG_BIN_DIR);
+  if (process.env.POSTGRES_HOME) dirs.push(path.join(process.env.POSTGRES_HOME, "bin"));
+
+  // Check system PATH
+  try {
+    const cmd = process.platform === "win32" ? "where.exe postgres" : "which postgres";
+    const out = execSync(cmd, { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" });
+    const line = out.trim().split(/\r?\n/)[0];
+    if (line) dirs.push(path.dirname(line));
+  } catch {}
+
+  // Common platform installation directories
+  if (process.platform === "win32") {
+    dirs.push("D:\\ORAC-Test\\PostgreSQL16\\bin");
+    const programFiles = process.env["ProgramFiles"] || "C:\\Program Files";
+    for (const v of ["16", "17", "15", "14"]) {
+      dirs.push(path.join(programFiles, "PostgreSQL", v, "bin"));
+    }
+  } else {
+    dirs.push("/usr/lib/postgresql/16/bin", "/usr/lib/postgresql/15/bin", "/usr/local/bin", "/usr/bin");
+  }
+
+  const exeName = process.platform === "win32" ? "postgres.exe" : "postgres";
+  const initName = process.platform === "win32" ? "initdb.exe" : "initdb";
+  const ctlName = process.platform === "win32" ? "pg_ctl.exe" : "pg_ctl";
+
+  for (const d of dirs) {
+    const pExe = path.join(d, exeName);
+    const iExe = path.join(d, initName);
+    if (fs.existsSync(pExe) && fs.existsSync(iExe)) {
+      return {
+        binDir: d,
+        postgresExe: pExe,
+        initdbExe: iExe,
+        pgCtlExe: path.join(d, ctlName)
+      };
+    }
+  }
+  return null;
+}
+
+async function getAvailablePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.listen(0, "127.0.0.1", () => {
+      const port = server.address().port;
+      server.close((err) => (err ? reject(err) : resolve(port)));
+    });
+  });
+}
+
+function assertDisposableTarget(url) {
+  assert.ok(url, "ORAC_TEST_DATABASE_URL must be provided");
+  const parsed = new URL(url);
+  assert.match(
+    parsed.pathname.slice(1),
+    /test/i,
+    "Refusing connection: target PostgreSQL database name must contain 'test' to prevent accidental execution on production/application database"
+  );
+}
 
 function makeInitialDb() {
   const admin = { id: "u-admin", role: "Admin", name: "Admin ORAC", is_active: true };
@@ -115,39 +194,81 @@ function buildApp(store) {
   return app;
 }
 
-async function startDisposablePostgres() {
-  if (!fs.existsSync(POSTGRES_EXE)) {
-    throw new Error(`PostgreSQL binary not found at ${POSTGRES_EXE}`);
+async function startEphemeralPostgres() {
+  const bins = resolvePostgresBinaries();
+  if (!bins) {
+    throw new Error(
+      "PostgreSQL binaries (postgres, initdb) not found on PATH or PG_BIN_DIR. " +
+      "Set PG_BIN_DIR or provide ORAC_TEST_DATABASE_URL for remote test execution."
+    );
   }
 
-  // Ensure data dir initialized
-  if (!fs.existsSync(path.join(PG_DATA, "PG_VERSION"))) {
-    fs.mkdirSync(PG_DATA, { recursive: true });
-    execSync(`"${INITDB_EXE}" -D "${PG_DATA}" -U postgres -A trust --locale=C --encoding=UTF8`, { stdio: "pipe" });
-  }
+  // Fresh temporary data directory per run
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "orac-pg-booking-"));
+  const port = await getAvailablePort();
+  const runToken = crypto.randomUUID();
+  const connectionString = `postgres://postgres@127.0.0.1:${port}/postgres`;
 
-  // Remove any stale pid file
-  const pidFile = path.join(PG_DATA, "postmaster.pid");
-  if (fs.existsSync(pidFile)) {
-    try { fs.unlinkSync(pidFile); } catch {}
-  }
-
-  const child = spawn(POSTGRES_EXE, ["-D", PG_DATA, "-p", String(PG_PORT)], {
-    stdio: ["ignore", "pipe", "pipe"]
+  // Initialize fresh database cluster
+  execSync(`"${bins.initdbExe}" -D "${tempDir}" -U postgres -A trust --locale=C --encoding=UTF8`, {
+    stdio: "pipe"
   });
+
+  const child = spawn(
+    bins.postgresExe,
+    [
+      "-D", tempDir,
+      "-p", String(port),
+      "-c", "listen_addresses=127.0.0.1",
+      "-c", `app.run_token=${runToken}`
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] }
+  );
 
   child.stderr.on("data", () => {});
   child.stdout.on("data", () => {});
 
+  let isCleanedUp = false;
+  const cleanup = async () => {
+    if (isCleanedUp) return;
+    isCleanedUp = true;
+    try {
+      if (bins.pgCtlExe && fs.existsSync(bins.pgCtlExe)) {
+        execSync(`"${bins.pgCtlExe}" -D "${tempDir}" stop -m fast`, { stdio: "ignore" });
+      }
+    } catch {}
+    try {
+      if (child && !child.killed) {
+        child.kill("SIGKILL");
+      }
+    } catch {}
+    try {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch {}
+  };
+
+  // Process-level termination safety
+  const onProcessExit = () => { cleanup(); };
+  process.once("exit", onProcessExit);
+
   // Poll until PostgreSQL accepts connections
   let connected = false;
-  const start = Date.now();
-  while (!connected && Date.now() - start < 15000) {
+  const startTime = Date.now();
+  while (!connected && Date.now() - startTime < 15000) {
     try {
-      const client = new pg.Client({ connectionString: CONNECTION_STRING });
+      const client = new pg.Client({ connectionString });
       await client.connect();
-      await client.query("SELECT 1");
+      // Confirm connection belongs to this specific ephemeral run before allowing any queries
+      const tokenRes = await client.query("SELECT current_setting('app.run_token', true) AS run_token");
       await client.end();
+      const serverToken = tokenRes.rows[0]?.run_token;
+      assert.equal(
+        serverToken,
+        runToken,
+        `Security guard: connected server run_token mismatch (${serverToken} !== ${runToken})`
+      );
       connected = true;
     } catch {
       await new Promise((r) => setTimeout(r, 200));
@@ -155,19 +276,16 @@ async function startDisposablePostgres() {
   }
 
   if (!connected) {
-    child.kill();
-    throw new Error(`Failed to connect to disposable PostgreSQL on port ${PG_PORT} within 15s`);
+    await cleanup();
+    throw new Error(`Failed to connect to ephemeral PostgreSQL on loopback port ${port} within 15s`);
   }
 
   return {
-    process: child,
+    connectionString,
+    port,
     async stop() {
-      try {
-        execSync(`"${PG_CTL_EXE}" -D "${PG_DATA}" stop -m fast`, { stdio: "ignore" });
-      } catch {
-        child.kill();
-      }
-      await new Promise((r) => setTimeout(r, 500));
+      process.removeListener("exit", onProcessExit);
+      await cleanup();
     }
   };
 }
@@ -216,8 +334,9 @@ const req = async (baseUrl, subPath, { method = "GET", body, token } = {}) => {
   return { status: res.status, body: parsed };
 };
 
-test("PostgreSQL 16.15 Concurrency & HTTP Route Verification Suite", async (t) => {
-  let pgInstance;
+test("PostgreSQL Concurrency & HTTP Route Verification Suite", { skip: skipSuite }, async (t) => {
+  let pgServer;
+  let connectionString;
   let poolA;
   let poolB;
   let serverA;
@@ -226,10 +345,16 @@ test("PostgreSQL 16.15 Concurrency & HTTP Route Verification Suite", async (t) =
   let urlB;
 
   t.before(async () => {
-    pgInstance = await startDisposablePostgres();
+    if (optInUrl) {
+      assertDisposableTarget(optInUrl);
+      connectionString = optInUrl;
+    } else {
+      pgServer = await startEphemeralPostgres();
+      connectionString = pgServer.connectionString;
+    }
 
-    poolA = new pg.Pool({ connectionString: CONNECTION_STRING, max: 5 });
-    poolB = new pg.Pool({ connectionString: CONNECTION_STRING, max: 5 });
+    poolA = new pg.Pool({ connectionString, max: 5 });
+    poolB = new pg.Pool({ connectionString, max: 5 });
 
     await seedDatabase(poolA, makeInitialDb());
 
@@ -248,11 +373,21 @@ test("PostgreSQL 16.15 Concurrency & HTTP Route Verification Suite", async (t) =
   });
 
   t.after(async () => {
-    if (serverA) await new Promise((r) => serverA.close(r));
-    if (serverB) await new Promise((r) => serverB.close(r));
-    if (poolA) await poolA.end();
-    if (poolB) await poolB.end();
-    if (pgInstance) await pgInstance.stop();
+    try {
+      if (serverA) await new Promise((r) => serverA.close(r));
+    } catch {}
+    try {
+      if (serverB) await new Promise((r) => serverB.close(r));
+    } catch {}
+    try {
+      if (poolA) await poolA.end();
+    } catch {}
+    try {
+      if (poolB) await poolB.end();
+    } catch {}
+    try {
+      if (pgServer) await pgServer.stop();
+    } catch {}
   });
 
   await t.test("Route A: POST /api/surveys/convert-booking enforces auth, permits Sales, updates PostgreSQL", async () => {
@@ -415,7 +550,7 @@ test("PostgreSQL 16.15 Concurrency & HTTP Route Verification Suite", async (t) =
 
     const tokenSales = generateToken({ id: "u-sales", role: "Sales", name: "Sales ORAC" });
 
-    // Fire concurrent conversion requests to two distinct server instances backed by separate real PostgreSQL connection pools
+    // Fire concurrent conversion requests across separate connection pools
     const [resA, resB] = await Promise.all([
       req(urlA, "/surveys/convert-booking", {
         method: "POST",
