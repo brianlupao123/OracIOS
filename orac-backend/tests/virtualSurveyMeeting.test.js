@@ -106,7 +106,8 @@ test("Virtual Surveys: books appointment and provisions Daily WebRTC room", asyn
   const data = res.getData();
   assert.equal(data.success, true);
   assert.equal(data.data.client_name, "Zimplats SMC");
-  assert.match(data.data.meeting_room_url, /https:\/\/orac-systems\.daily\.co\//);
+  assert.equal(data.data.meeting_room_url, null);
+  assert.equal(data.data.meeting_is_mock, true);
   assert.equal(req.db.virtual_technical_surveys.length, 1);
 });
 
@@ -219,4 +220,59 @@ test("AI Scope Extractor: automatically creates a pre-populated Draft Quotation 
   assert.equal(req.db.quotes.length, 1);
   assert.ok(req.db.quote_lines.length > 0);
   assert.equal(req.db.virtual_technical_surveys[0].linked_quote_id, data.data.created_quote.id);
+});
+
+test("Virtual Surveys: unlinked viewers are denied for list and join", async () => {
+  const fixture = {
+    user: { id: "u-unlinked" },
+    params: { id: "srv-101" },
+    db: {
+      users: [{ id: "u-unlinked", role: "Client Viewer", is_active: true }],
+      virtual_technical_surveys: [{ id: "srv-101", client_id: "c-zimplats", meeting_room_name: "survey-101" }]
+    }
+  };
+  const listing = createMockReqRes(fixture);
+  listSurveys(listing.req, listing.res);
+  assert.equal(listing.res.getStatus(), 403);
+  const access = createMockReqRes(fixture);
+  await getSurveyMeetingAccess(access.req, access.res);
+  assert.equal(access.res.getStatus(), 403);
+});
+
+test("Virtual Surveys: Daily uses the scheduled end and refuses provider errors", async (t) => {
+  const previousKey = process.env.DAILY_API_KEY;
+  process.env.DAILY_API_KEY = "test-only";
+  t.after(() => {
+    if (previousKey === undefined) delete process.env.DAILY_API_KEY;
+    else process.env.DAILY_API_KEY = previousKey;
+  });
+
+  const start = new Date(Date.now() + 24 * 60 * 60_000);
+  let roomRequest;
+  t.mock.method(globalThis, "fetch", async (_, request) => {
+    roomRequest = JSON.parse(request.body);
+    return { ok: true, json: async () => ({ name: "future-survey", url: "https://orac-test.daily.co/future-survey" }) };
+  });
+  const result = await provisionDailyRoom("test", "future-survey", 60, start.toISOString());
+  assert.equal(result.is_mock, false);
+  assert.equal(roomRequest.properties.exp, Math.floor((start.getTime() + 90 * 60_000) / 1000));
+  assert.equal(roomRequest.privacy, "private");
+
+  globalThis.fetch.mock.mockImplementation(async () => ({ ok: false }));
+  await assert.rejects(provisionDailyRoom("test", "future-survey", 60, start.toISOString()), { statusCode: 503 });
+  await assert.rejects(generateMeetingToken("future-survey", "Test user"), { statusCode: 503 });
+});
+
+test("Virtual Surveys: production without Daily credentials refuses live booking", async (t) => {
+  const priorMode = process.env.NODE_ENV;
+  const priorKey = process.env.DAILY_API_KEY;
+  process.env.NODE_ENV = "production";
+  delete process.env.DAILY_API_KEY;
+  t.after(() => {
+    if (priorMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorMode;
+    if (priorKey !== undefined) process.env.DAILY_API_KEY = priorKey;
+  });
+  await assert.rejects(provisionDailyRoom("test"), { statusCode: 503 });
+  await assert.rejects(generateMeetingToken("test-room", "Test user"), { statusCode: 503 });
 });

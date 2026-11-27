@@ -33,24 +33,25 @@ export default function VirtualSurveysPage({ user }) {
 
   // Modals & submittals
   const [bookModalOpen, setBookModalOpen] = useState(false);
-  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [meetingLink, setMeetingLink] = useState(null);
+  const [joining, setJoining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [extractingAi, setExtractingAi] = useState(false);
   const [aiResult, setAiResult] = useState(null);
 
   // Booking Form
   const [bookForm, setBookForm] = useState({
-    client_id: "c-zimplats",
-    client_name: "Zimplats SMC",
-    equipment_tag_id: "TAG-PU-101",
-    equipment_tag_name: "Primary Slurry Feed Pump PU-101",
-    mine_site: "ZIMPLATS_SMC",
-    scheduled_at: new Date(Date.now() + 86400000).toISOString().slice(0, 16),
+    client_id: "",
+    client_name: "",
+    equipment_tag_id: "",
+    equipment_tag_name: "",
+    mine_site: "",
+    scheduled_at: new Date(Date.now() + 26 * 60 * 60_000).toISOString().slice(0, 16),
     duration_minutes: 60,
     host_specialist_id: user?.id || "u-specialist",
     host_specialist_name: user?.name || "Lead Rubber Lining Specialist",
-    client_engineer_name: "Eng. Chitepo",
-    client_engineer_email: "chitepo@zimplats.co.zw"
+    client_engineer_name: "",
+    client_engineer_email: ""
   });
 
   // Observations Form
@@ -99,16 +100,43 @@ export default function VirtualSurveysPage({ user }) {
     setSuccessMsg("");
     try {
       const res = await surveys.bookSurvey(bookForm);
-      setSuccessMsg("Virtual Technical Survey consultation booked with Daily.co WebRTC room.");
+      const record = res.data ?? res;
+      setSuccessMsg(record.meeting_is_mock
+        ? "Survey saved for local testing. Live video is unavailable."
+        : "Virtual Technical Survey booked.");
       setBookModalOpen(false);
       await loadAll();
-      if (res.data) setSelectedSurvey(res.data);
+      if (record.id) setSelectedSurvey(record);
     } catch (err) {
       setError(err.message);
     } finally {
       setSubmitting(false);
     }
   }
+
+  async function handleJoinSurvey() {
+    if (!selectedSurvey) return;
+    setJoining(true);
+    setError("");
+    try {
+      const response = await surveys.getMeetingAccess(selectedSurvey.id);
+      const { room_url, token, is_mock } = response.data ?? response;
+      if (is_mock || !room_url || !token) {
+        throw new Error("Live video is unavailable for this survey.");
+      }
+      const url = new URL(room_url);
+      if (url.protocol !== "https:" || !url.hostname.endsWith(".daily.co") || url.username || url.password || url.port) {
+        throw new Error("The video provider returned an invalid room address.");
+      }
+      url.searchParams.set("t", token);
+      setMeetingLink({ surveyId: selectedSurvey.id, url: url.href });
+    } catch (err) {
+      setError(err.message || "Could not open the video consultation.");
+    } finally {
+      setJoining(false);
+    }
+  }
+
 
   async function handleSaveNotes(e) {
     e.preventDefault();
@@ -282,18 +310,13 @@ export default function VirtualSurveysPage({ user }) {
                 <div className="text-sm text-gray-600 dark:text-gray-300">
                   Target Equipment: <strong>{selectedSurvey.equipment_tag_name}</strong> at <strong>{selectedSurvey.mine_site}</strong>
                 </div>
-                <div className="p-4 rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 space-y-2">
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Meeting Room URL:</div>
-                  <div className="text-sm font-mono text-orac-blue break-all">
-                    {selectedSurvey.meeting_room_url || "https://orac-systems.daily.co/survey-room"}
-                  </div>
-                </div>
                 <div className="pt-2">
-                  <Button variant="primary" onClick={() => setVideoModalOpen(true)}>
-                    Join Video Consultation Room
+                  <Button variant="primary" onClick={handleJoinSurvey} disabled={joining}>
+                    {joining ? "Checking access..." : "Join Video Consultation"}
                   </Button>
                 </div>
               </div>
+
 
               {/* Wear Assessment Observation Notes Form */}
               <div className="p-6 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
@@ -455,7 +478,7 @@ export default function VirtualSurveysPage({ user }) {
 
       {/* Book Survey Modal */}
       {bookModalOpen && (
-        <Modal title="Book Virtual Technical Survey Appointment" onClose={() => setBookModalOpen(false)}>
+        <Modal isOpen title="Book Virtual Technical Survey Appointment" onClose={() => setBookModalOpen(false)}>
           <form onSubmit={handleBookSurvey} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -515,7 +538,7 @@ export default function VirtualSurveysPage({ user }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled Date & Time</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Scheduled date and time (Zimbabwe)</label>
                 <input
                   type="datetime-local"
                   required
@@ -560,30 +583,22 @@ export default function VirtualSurveysPage({ user }) {
         </Modal>
       )}
 
-      {/* Embedded Video Consultation Modal */}
-      {videoModalOpen && selectedSurvey && (
-        <Modal title={`Live Consultation: ${selectedSurvey.survey_number}`} onClose={() => setVideoModalOpen(false)}>
+      {meetingLink?.surveyId === selectedSurvey?.id && meetingLink && (
+        <Modal isOpen title="Join private consultation" onClose={() => setMeetingLink(null)}>
           <div className="space-y-4">
-            <div className="p-4 rounded-md bg-gray-900 text-white text-center min-h-[300px] flex flex-col justify-center items-center space-y-3">
-              <div className="text-lg font-bold">WebRTC Daily.co Video Room Active</div>
-              <div className="text-sm text-gray-400">
-                Equipment Tag: {selectedSurvey.equipment_tag_name} &bull; Mine: {selectedSurvey.mine_site}
-              </div>
-              <div className="text-xs font-mono text-emerald-600">
-                {selectedSurvey.meeting_room_url}
-              </div>
-              <div className="pt-4 flex space-x-3">
-                <Button variant="primary" onClick={() => window.open(selectedSurvey.meeting_room_url, "_blank")}>
-                  Open Fullscreen CAD Room
-                </Button>
-                <Button variant="secondary" onClick={() => setVideoModalOpen(false)}>
-                  Close Room Window
-                </Button>
-              </div>
-            </div>
+            <p>Open Daily to check your camera and microphone and join the consultation.</p>
+            <a
+              className="inline-flex rounded-md bg-orac-blue px-4 py-2 font-medium text-white"
+              href={meetingLink.url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open video consultation
+            </a>
           </div>
         </Modal>
       )}
+
     </div>
   );
 }

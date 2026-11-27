@@ -11,7 +11,9 @@ import {
 
 import {
   provisionDailyRoom,
-  generateMeetingToken
+  generateMeetingToken,
+  meetingEndMs,
+  surveyStartMs
 } from "../services/videoMeetingService.js";
 
 import {
@@ -30,12 +32,21 @@ function checkPermission(actor, allowedRoles = ["Admin", "Management", "Operatio
     err.statusCode = 401;
     throw err;
   }
-  if (!allowedRoles.includes(actor.role)) {
+  if (actor.is_active === false || !allowedRoles.includes(actor.role)) {
     const err = new Error(`Forbidden: role '${actor?.role}' lacks permission`);
     err.statusCode = 403;
     throw err;
   }
 }
+
+function checkSurveyClient(actor, clientId = actor.client_id) {
+  if (actor.role === "Client Viewer" && (!actor.client_id || clientId !== actor.client_id)) {
+    const err = new Error("Forbidden: Survey access requires matching client ownership.");
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
 
 export const bookSurvey = async (req, res) => {
   try {
@@ -52,13 +63,19 @@ export const bookSurvey = async (req, res) => {
     }
 
     const val = parseResult.data;
+    checkSurveyClient(actor, val.client_id);
+    const startsAt = surveyStartMs(val.scheduled_at);
+    if (!Number.isFinite(startsAt) || startsAt <= Date.now()) {
+      return res.status(400).json({ success: false, message: "Enter a future survey date and time." });
+    }
+    const scheduledAt = new Date(startsAt).toISOString();
     req.db.virtual_technical_surveys = req.db.virtual_technical_surveys || [];
 
     const surveyId = req.store.id("srv");
     const surveyNumber = `VTS-${Date.now().toString().slice(-6)}`;
 
     // Provision Daily.co WebRTC video room
-    const room = await provisionDailyRoom(surveyId, `orac-${surveyNumber}`, val.duration_minutes);
+    const room = await provisionDailyRoom(surveyId, `orac-${surveyId}`, val.duration_minutes, scheduledAt);
 
     const record = {
       id: surveyId,
@@ -68,10 +85,11 @@ export const bookSurvey = async (req, res) => {
       equipment_tag_id: val.equipment_tag_id,
       equipment_tag_name: val.equipment_tag_name,
       mine_site: val.mine_site,
-      scheduled_at: val.scheduled_at,
+      scheduled_at: scheduledAt,
       duration_minutes: val.duration_minutes,
       meeting_room_name: room.room_name,
       meeting_room_url: room.room_url,
+      meeting_is_mock: room.is_mock,
       status: "SCHEDULED",
       host_specialist_id: val.host_specialist_id,
       host_specialist_name: val.host_specialist_name,
@@ -105,7 +123,8 @@ export const listSurveys = (req, res) => {
     let list = [...req.db.virtual_technical_surveys];
 
     // Scoping for Client Viewer
-    if (actor.role === "Client Viewer" && actor.client_id) {
+    checkSurveyClient(actor);
+    if (actor.role === "Client Viewer") {
       list = list.filter((s) => s.client_id === actor.client_id);
     } else if (req.query.client_id) {
       list = list.filter((s) => s.client_id === req.query.client_id);
@@ -133,12 +152,19 @@ export const getSurveyMeetingAccess = async (req, res) => {
       return res.status(404).json({ success: false, message: "Survey not found" });
     }
 
-    if (actor.role === "Client Viewer" && actor.client_id && survey.client_id !== actor.client_id) {
-      return res.status(403).json({ success: false, message: "Forbidden: Survey belongs to another client" });
+    checkSurveyClient(actor, survey.client_id ?? "");
+    const endsAt = meetingEndMs(survey.scheduled_at, survey.duration_minutes);
+    if (survey.meeting_is_mock || (survey.status && survey.status !== "SCHEDULED")
+        || (Number.isFinite(endsAt) && endsAt <= Date.now())) {
+      return res.status(409).json({ success: false, message: "This survey has no active video room." });
     }
 
-    const isHost = actor.id === survey.host_specialist_id || ["Admin", "Management"].includes(actor.role);
-    const tokenInfo = await generateMeetingToken(survey.meeting_room_name, actor.name, isHost);
+    const isHost = actor.role !== "Client Viewer"
+      && (actor.id === survey.host_specialist_id || ["Admin", "Management"].includes(actor.role));
+    const tokenInfo = await generateMeetingToken(
+      survey.meeting_room_name, actor.name, isHost, Number.isFinite(endsAt) ? endsAt : undefined
+    );
+    res.setHeader?.("Cache-Control", "no-store");
 
     return res.json({
       success: true,
@@ -147,6 +173,7 @@ export const getSurveyMeetingAccess = async (req, res) => {
         survey_number: survey.survey_number,
         room_url: survey.meeting_room_url,
         token: tokenInfo.token,
+        is_mock: tokenInfo.is_mock,
         is_host: isHost
       }
     });
